@@ -1,0 +1,348 @@
+{
+  "batch_requests": [
+    {
+      "name": "Single Skill - Python Backend",
+      "description": "Single skill request with career goal and technology preferences",
+      "request": {
+        "skills": [
+          {
+            "skill": "python",
+            "preferences": ["Backend Developer", "FastAPI", "project-based"]
+          }
+        ],
+        "max_results": 10,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Multiple Skills - Full Stack Developer",
+      "description": "Multiple skills for a full stack developer learning path",
+      "request": {
+        "skills": [
+          {
+            "skill": "python",
+            "preferences": ["Backend Developer", "FastAPI", "Django"]
+          },
+          {
+            "skill": "react",
+            "preferences": ["Frontend Developer", "hooks", "state management"]
+          },
+          {
+            "skill": "docker",
+            "preferences": ["DevOps", "microservices", "deployment"]
+          }
+        ],
+        "max_results": 8,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Data Science Learning Path",
+      "description": "Skills for aspiring data scientists",
+      "request": {
+        "skills": [
+          {
+            "skill": "python",
+            "preferences": ["Data Scientist", "pandas", "numpy"]
+          },
+          {
+            "skill": "machine learning",
+            "preferences": ["Data Scientist", "scikit-learn", "hands-on"]
+          },
+          {
+            "skill": "sql",
+            "preferences": ["Data Scientist", "data analysis", "postgresql"]
+          }
+        ],
+        "max_results": 10,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Quick Tutorials - DevOps",
+      "description": "Quick tutorials for DevOps tools",
+      "request": {
+        "skills": [
+          {
+            "skill": "kubernetes",
+            "preferences": ["quick tutorials", "hands-on", "deployment"]
+          },
+          {
+            "skill": "terraform",
+            "preferences": ["quick tutorials", "infrastructure as code"]
+          },
+          {
+            "skill": "jenkins",
+            "preferences": ["quick tutorials", "CI/CD"]
+          }
+        ],
+        "max_results": 5,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Spanish Content - Web Development",
+      "description": "Web development resources in Spanish",
+      "request": {
+        "skills": [
+          {
+            "skill": "javascript",
+            "preferences": ["web development", "frontend"]
+          },
+          {
+            "skill": "html css",
+            "preferences": ["web development", "responsive design"]
+          }
+        ],
+        "max_results": 10,
+        "language": "es"
+      }
+    },
+    {
+      "name": "ML Engineer Path",
+      "description": "Skills for ML engineering role",
+      "request": {
+        "skills": [
+          {
+            "skill": "python",
+            "preferences": ["ML Engineer", "tensorflow", "pytorch"]
+          },
+          {
+            "skill": "deep learning",
+            "preferences": ["ML Engineer", "neural networks", "comprehensive course"]
+          },
+          {
+            "skill": "mlops",
+            "preferences": ["ML Engineer", "model deployment", "production"]
+          }
+        ],
+        "max_results": 12,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Minimal Request",
+      "description": "Minimal request with just skill name",
+      "request": {
+        "skills": [
+          {
+            "skill": "golang"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Mobile Development",
+      "description": "Mobile app development skills",
+      "request": {
+        "skills": [
+          {
+            "skill": "flutter",
+            "preferences": ["Mobile Developer", "cross-platform", "project-based"]
+          },
+          {
+            "skill": "firebase",
+            "preferences": ["Mobile Developer", "backend", "authentication"]
+          }
+        ],
+        "max_results": 8,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Frontend Specialist",
+      "description": "Advanced frontend development",
+      "request": {
+        "skills": [
+          {
+            "skill": "react",
+            "preferences": ["Frontend Developer", "advanced", "performance optimization"]
+          },
+          {
+            "skill": "typescript",
+            "preferences": ["Frontend Developer", "type safety", "best practices"]
+          },
+          {
+            "skill": "nextjs",
+            "preferences": ["Frontend Developer", "SSR", "full-stack"]
+          }
+        ],
+        "max_results": 10,
+        "language": "en"
+      }
+    },
+    {
+      "name": "Cloud Architecture",
+      "description": "Cloud architecture and infrastructure",
+      "request": {
+        "skills": [
+          {
+            "skill": "aws",
+            "preferences": ["Cloud Architect", "serverless", "comprehensive course"]
+          },
+          {
+            "skill": "docker",
+            "preferences": ["Cloud Architect", "containerization"]
+          },
+          {
+            "skill": "kubernetes",
+            "preferences": ["Cloud Architect", "orchestration", "production"]
+          }
+        ],
+        "max_results": 10,
+        "language": "en"
+      }
+    }
+  ],
+  "curl_examples": [
+    {
+      "name": "Single Skill Request",
+      "command": "curl -X POST \"http://127.0.0.1:8000/api/batch-recommendations\" -H \"Content-Type: application/json\" -d '{\"skills\": [{\"skill\": \"python\", \"preferences\": [\"Backend Developer\", \"FastAPI\"]}], \"max_results\": 5, \"language\": \"en\"}'"
+    },
+    {
+      "name": "Multiple Skills Request",
+      "command": "curl -X POST \"http://127.0.0.1:8000/api/batch-recommendations\" -H \"Content-Type: application/json\" -d '{\"skills\": [{\"skill\": \"python\", \"preferences\": [\"Backend Developer\"]}, {\"skill\": \"docker\", \"preferences\": [\"microservices\"]}], \"max_results\": 5, \"language\": \"en\"}'"
+    },
+    {
+      "name": "Spanish Content",
+      "command": "curl -X POST \"http://127.0.0.1:8000/api/batch-recommendations\" -H \"Content-Type: application/json\" -d '{\"skills\": [{\"skill\": \"javascript\"}], \"max_results\": 5, \"language\": \"es\"}'"
+    }
+  ],
+  "python_examples": [
+    {
+      "name": "Using requests library - Single Skill",
+      "code": "import requests\n\nurl = \"http://127.0.0.1:8000/api/batch-recommendations\"\npayload = {\n    \"skills\": [\n        {\n            \"skill\": \"python\",\n            \"preferences\": [\"Backend Developer\", \"FastAPI\"]\n        }\n    ],\n    \"max_results\": 10,\n    \"language\": \"en\"\n}\n\nresponse = requests.post(url, json=payload)\ndata = response.json()\n\nfor skill_result in data['results']:\n    print(f\"Skill: {skill_result['skill']}\")\n    print(f\"Found {skill_result['total_results']} recommendations\")\n    for course in skill_result['recommendations']:\n        print(f\"  - {course['title']} ({course['provider']})\")\n        print(f\"    Score: {course['relevance_score']:.2f}\")"
+    },
+    {
+      "name": "Using requests library - Multiple Skills",
+      "code": "import requests\n\nurl = \"http://127.0.0.1:8000/api/batch-recommendations\"\npayload = {\n    \"skills\": [\n        {\n            \"skill\": \"python\",\n            \"preferences\": [\"Backend Developer\", \"FastAPI\"]\n        },\n        {\n            \"skill\": \"docker\",\n            \"preferences\": [\"Backend Developer\", \"microservices\"]\n        },\n        {\n            \"skill\": \"postgresql\",\n            \"preferences\": [\"database optimization\"]\n        }\n    ],\n    \"max_results\": 5,\n    \"language\": \"en\"\n}\n\nresponse = requests.post(url, json=payload)\ndata = response.json()\n\nprint(f\"Total skills processed: {data['metadata']['total_skills']}\")\nprint(f\"Language: {data['metadata'].get('language', 'all')}\\n\")\n\nfor skill_result in data['results']:\n    print(f\"\\n{'='*60}\")\n    print(f\"Skill: {skill_result['skill']}\")\n    print(f\"Total Results: {skill_result['total_results']}\")\n    print('='*60)\n    \n    for idx, course in enumerate(skill_result['recommendations'], 1):\n        print(f\"\\n{idx}. {course['title']}\")\n        print(f\"   Provider: {course['provider']}\")\n        print(f\"   URL: {course['url']}\")\n        print(f\"   Score: {course['relevance_score']:.2f}\")\n        print(f\"   Tags: {', '.join(course['tags'][:5])}\")"
+    }
+  ],
+  "javascript_examples": [
+    {
+      "name": "Using fetch API - Single Skill",
+      "code": "const url = 'http://127.0.0.1:8000/api/batch-recommendations';\nconst payload = {\n  skills: [\n    {\n      skill: 'python',\n      preferences: ['Backend Developer', 'FastAPI']\n    }\n  ],\n  max_results: 10,\n  language: 'en'\n};\n\nfetch(url, {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify(payload)\n})\n  .then(response => response.json())\n  .then(data => {\n    data.results.forEach(skillResult => {\n      console.log(`Skill: ${skillResult.skill}`);\n      console.log(`Found ${skillResult.total_results} recommendations`);\n      skillResult.recommendations.forEach(course => {\n        console.log(`  - ${course.title} (${course.provider})`);\n        console.log(`    Score: ${course.relevance_score.toFixed(2)}`);\n      });\n    });\n  })\n  .catch(error => console.error('Error:', error));"
+    },
+    {
+      "name": "Using fetch API - Multiple Skills",
+      "code": "const url = 'http://127.0.0.1:8000/api/batch-recommendations';\nconst payload = {\n  skills: [\n    {\n      skill: 'python',\n      preferences: ['Backend Developer', 'FastAPI']\n    },\n    {\n      skill: 'docker',\n      preferences: ['Backend Developer', 'microservices']\n    },\n    {\n      skill: 'postgresql',\n      preferences: ['database optimization']\n    }\n  ],\n  max_results: 5,\n  language: 'en'\n};\n\nfetch(url, {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify(payload)\n})\n  .then(response => response.json())\n  .then(data => {\n    console.log(`Total skills: ${data.metadata.total_skills}`);\n    console.log(`Language: ${data.metadata.language || 'all'}\\n`);\n    \n    data.results.forEach(skillResult => {\n      console.log(`\\n${'='.repeat(60)}`);\n      console.log(`Skill: ${skillResult.skill}`);\n      console.log(`Total Results: ${skillResult.total_results}`);\n      console.log('='.repeat(60));\n      \n      skillResult.recommendations.forEach((course, idx) => {\n        console.log(`\\n${idx + 1}. ${course.title}`);\n        console.log(`   Provider: ${course.provider}`);\n        console.log(`   Score: ${course.relevance_score.toFixed(2)}`);\n        console.log(`   Tags: ${course.tags.slice(0, 5).join(', ')}`);\n      });\n    });\n  })\n  .catch(error => console.error('Error:', error));"
+    }
+  ],
+  "field_descriptions": {
+    "skills": {
+      "type": "array of SkillRequest objects",
+      "required": true,
+      "description": "List of skills to get recommendations for",
+      "min_length": 1,
+      "examples": [
+        [{"skill": "python", "preferences": ["Backend Developer"]}],
+        [
+          {"skill": "python", "preferences": ["Backend Developer", "FastAPI"]},
+          {"skill": "docker", "preferences": ["microservices"]}
+        ]
+      ]
+    },
+    "skill": {
+      "type": "string",
+      "required": true,
+      "description": "The skill or topic you want to learn",
+      "examples": ["python", "javascript", "machine learning", "docker"],
+      "validation": "Must be at least 1 character long and not whitespace-only"
+    },
+    "preferences": {
+      "type": "array of strings",
+      "required": false,
+      "default": null,
+      "description": "Career goals, learning styles, time commitments, or technologies",
+      "examples": [
+        ["Backend Developer", "FastAPI"],
+        ["Data Scientist", "hands-on", "project-based"],
+        ["quick tutorials", "microservices"]
+      ]
+    },
+    "max_results": {
+      "type": "integer",
+      "required": false,
+      "default": 10,
+      "description": "Maximum number of recommendations per skill",
+      "range": "1 to 50",
+      "examples": [5, 10, 20]
+    },
+    "language": {
+      "type": "string",
+      "required": false,
+      "default": null,
+      "description": "ISO 639-1 language code for content filtering",
+      "examples": ["en", "es", "fr", "de", "hi", "ja", "zh", "ar"],
+      "validation": "Must be a valid ISO 639-1 code"
+    }
+  },
+  "response_structure": {
+    "results": "Array of SkillRecommendationResult objects, one per requested skill",
+    "SkillRecommendationResult": {
+      "skill": "The skill that was searched for",
+      "total_results": "Number of recommendations returned for this skill",
+      "recommendations": "Array of SimplifiedCourse objects"
+    },
+    "SimplifiedCourse": {
+      "id": "Unique identifier (e.g., 'youtube_abc123')",
+      "title": "Course or video title",
+      "provider": "Content provider (YouTube, GitHub, etc.)",
+      "url": "Direct link to the resource",
+      "description": "Description of the content",
+      "tags": "Array of relevant tags/keywords",
+      "relevance_score": "Calculated relevance score (0.0 to 1.0)"
+    },
+    "metadata": {
+      "total_skills": "Number of skills processed",
+      "language": "Language filter applied (if any)",
+      "skill_errors": "Errors for specific skills (if any)"
+    }
+  },
+  "preference_types": {
+    "career_goals": {
+      "description": "Target job roles or career paths",
+      "examples": [
+        "Backend Developer",
+        "Frontend Developer",
+        "Data Scientist",
+        "ML Engineer",
+        "DevOps Engineer",
+        "Cloud Architect",
+        "Mobile Developer"
+      ]
+    },
+    "learning_styles": {
+      "description": "Preferred learning approaches",
+      "examples": [
+        "project-based",
+        "hands-on",
+        "theoretical",
+        "interactive",
+        "comprehensive course",
+        "quick tutorials"
+      ]
+    },
+    "time_commitment": {
+      "description": "Desired content length or time investment",
+      "examples": [
+        "quick tutorials",
+        "short videos",
+        "comprehensive courses",
+        "in-depth"
+      ]
+    },
+    "technologies": {
+      "description": "Specific frameworks, libraries, or tools",
+      "examples": [
+        "FastAPI",
+        "Django",
+        "React",
+        "Docker",
+        "Kubernetes",
+        "TensorFlow",
+        "PostgreSQL"
+      ]
+    }
+  }
+}

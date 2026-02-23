@@ -1,0 +1,194 @@
+{
+  "sample_requests": [
+    {
+      "name": "Basic Request - Python",
+      "description": "Simple request for Python programming tutorials",
+      "request": {
+        "skill": "python programming",
+        "difficulty": "all",
+        "max_results": 10
+      }
+    },
+    {
+      "name": "Beginner JavaScript",
+      "description": "JavaScript tutorials for beginners with web development focus",
+      "request": {
+        "skill": "javascript",
+        "difficulty": "beginner",
+        "max_results": 5,
+        "preferences": ["web development", "frontend"]
+      }
+    },
+    {
+      "name": "Advanced Machine Learning",
+      "description": "Advanced ML content with specific preferences",
+      "request": {
+        "skill": "machine learning",
+        "difficulty": "advanced",
+        "max_results": 15,
+        "preferences": ["deep learning", "neural networks", "tensorflow"]
+      }
+    },
+    {
+      "name": "Intermediate React",
+      "description": "React tutorials at intermediate level",
+      "request": {
+        "skill": "react",
+        "difficulty": "intermediate",
+        "max_results": 8,
+        "preferences": ["hooks", "state management"]
+      }
+    },
+    {
+      "name": "Data Science",
+      "description": "General data science resources",
+      "request": {
+        "skill": "data science",
+        "difficulty": "all",
+        "max_results": 20,
+        "preferences": ["pandas", "visualization", "statistics"]
+      }
+    },
+    {
+      "name": "Beginner Web Development",
+      "description": "Complete web development for beginners",
+      "request": {
+        "skill": "web development",
+        "difficulty": "beginner",
+        "max_results": 10,
+        "preferences": ["html", "css", "responsive design"]
+      }
+    },
+    {
+      "name": "Docker and Kubernetes",
+      "description": "DevOps containerization tutorials",
+      "request": {
+        "skill": "docker kubernetes",
+        "difficulty": "intermediate",
+        "max_results": 12,
+        "preferences": ["deployment", "microservices", "orchestration"]
+      }
+    },
+    {
+      "name": "Minimal Request",
+      "description": "Only required field provided",
+      "request": {
+        "skill": "golang"
+      }
+    },
+    {
+      "name": "SQL Database",
+      "description": "Database and SQL tutorials",
+      "request": {
+        "skill": "sql database",
+        "difficulty": "beginner",
+        "max_results": 7,
+        "preferences": ["postgresql", "queries", "optimization"]
+      }
+    },
+    {
+      "name": "Mobile Development",
+      "description": "Flutter mobile app development",
+      "request": {
+        "skill": "flutter",
+        "difficulty": "intermediate",
+        "max_results": 10,
+        "preferences": ["android", "ios", "cross-platform"]
+      }
+    }
+  ],
+  "curl_examples": [
+    {
+      "name": "Basic Python Request",
+      "command": "curl -X POST \"http://127.0.0.1:8000/api/recommendations\" -H \"Content-Type: application/json\" -d '{\"skill\": \"python programming\", \"max_results\": 5}'"
+    },
+    {
+      "name": "JavaScript with Preferences",
+      "command": "curl -X POST \"http://127.0.0.1:8000/api/recommendations\" -H \"Content-Type: application/json\" -d '{\"skill\": \"javascript\", \"difficulty\": \"beginner\", \"max_results\": 10, \"preferences\": [\"web development\", \"frontend\"]}'"
+    },
+    {
+      "name": "Machine Learning Advanced",
+      "command": "curl -X POST \"http://127.0.0.1:8000/api/recommendations\" -H \"Content-Type: application/json\" -d '{\"skill\": \"machine learning\", \"difficulty\": \"advanced\", \"max_results\": 15, \"preferences\": [\"deep learning\", \"tensorflow\"]}'"
+    }
+  ],
+  "python_examples": [
+    {
+      "name": "Using requests library",
+      "code": "import requests\n\nurl = \"http://127.0.0.1:8000/api/recommendations\"\npayload = {\n    \"skill\": \"python programming\",\n    \"difficulty\": \"beginner\",\n    \"max_results\": 10,\n    \"preferences\": [\"web development\", \"django\"]\n}\n\nresponse = requests.post(url, json=payload)\ndata = response.json()\n\nprint(f\"Found {data['total_results']} recommendations\")\nfor course in data['recommendations']:\n    print(f\"- {course['title']} ({course['provider']})\")"
+    },
+    {
+      "name": "Using httpx (async)",
+      "code": "import httpx\nimport asyncio\n\nasync def get_recommendations():\n    url = \"http://127.0.0.1:8000/api/recommendations\"\n    payload = {\n        \"skill\": \"javascript\",\n        \"difficulty\": \"intermediate\",\n        \"max_results\": 5\n    }\n    \n    async with httpx.AsyncClient() as client:\n        response = await client.post(url, json=payload)\n        return response.json()\n\ndata = asyncio.run(get_recommendations())\nprint(data)"
+    }
+  ],
+  "javascript_examples": [
+    {
+      "name": "Using fetch API",
+      "code": "const url = 'http://127.0.0.1:8000/api/recommendations';\nconst payload = {\n  skill: 'react',\n  difficulty: 'intermediate',\n  max_results: 10,\n  preferences: ['hooks', 'state management']\n};\n\nfetch(url, {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify(payload)\n})\n  .then(response => response.json())\n  .then(data => {\n    console.log(`Found ${data.total_results} recommendations`);\n    data.recommendations.forEach(course => {\n      console.log(`- ${course.title} (${course.provider})`);\n    });\n  })\n  .catch(error => console.error('Error:', error));"
+    },
+    {
+      "name": "Using axios",
+      "code": "const axios = require('axios');\n\nconst url = 'http://127.0.0.1:8000/api/recommendations';\nconst payload = {\n  skill: 'nodejs',\n  difficulty: 'beginner',\n  max_results: 8,\n  preferences: ['express', 'api development']\n};\n\naxios.post(url, payload)\n  .then(response => {\n    const data = response.data;\n    console.log(`Found ${data.total_results} recommendations`);\n    data.recommendations.forEach(course => {\n      console.log(`${course.title} - Score: ${course.relevance_score}`);\n    });\n  })\n  .catch(error => console.error('Error:', error));"
+    }
+  ],
+  "field_descriptions": {
+    "skill": {
+      "type": "string",
+      "required": true,
+      "description": "The skill or topic you want to learn",
+      "examples": ["python", "javascript", "machine learning", "web development"],
+      "validation": "Must be at least 1 character long"
+    },
+    "difficulty": {
+      "type": "string",
+      "required": false,
+      "default": "all",
+      "description": "Preferred difficulty level for recommendations",
+      "allowed_values": ["beginner", "intermediate", "advanced", "all"],
+      "examples": ["beginner", "intermediate"]
+    },
+    "max_results": {
+      "type": "integer",
+      "required": false,
+      "default": 10,
+      "description": "Maximum number of recommendations to return",
+      "range": "1 to 50",
+      "examples": [5, 10, 20]
+    },
+    "preferences": {
+      "type": "array of strings",
+      "required": false,
+      "default": null,
+      "description": "Additional keywords or preferences to refine recommendations",
+      "examples": [
+        ["web development", "practical projects"],
+        ["deep learning", "tensorflow"],
+        ["frontend", "responsive design"]
+      ]
+    }
+  },
+  "response_structure": {
+    "skill": "The skill that was searched for",
+    "total_results": "Number of recommendations returned",
+    "recommendations": [
+      {
+        "id": "Unique identifier (e.g., 'youtube_abc123')",
+        "title": "Course or video title",
+        "provider": "Content provider (YouTube, GitHub, etc.)",
+        "url": "Direct link to the resource",
+        "description": "Description of the content",
+        "difficulty": "Difficulty level (if available)",
+        "duration": "Estimated duration (if available)",
+        "rating": "Rating score 0-5 (if available)",
+        "tags": "Array of relevant tags/keywords",
+        "relevance_score": "Calculated relevance score (0.0 to 1.0)",
+        "thumbnail": "Thumbnail image URL (if available)"
+      }
+    ],
+    "metadata": {
+      "providers": "Status and count for each provider",
+      "total_fetched": "Total items fetched before filtering",
+      "filtered_count": "Items after filtering and ranking"
+    }
+  }
+}
