@@ -39,8 +39,8 @@ async def get_recommendations(request: RecommendationRequest) -> RecommendationR
     logger.info(f"Fetching recommendations for: {request.skill}")
     
     results = await asyncio.gather(
-        youtube.fetch_courses(request.skill, request.max_results),
-        github.fetch_courses(request.skill, request.max_results),
+        youtube.fetch_courses(request.skill, request.max_results, preferences=request.preferences),
+        github.fetch_courses(request.skill, request.max_results, preferences=request.preferences),
         return_exceptions=True
     )
     

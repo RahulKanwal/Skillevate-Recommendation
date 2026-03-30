@@ -1,90 +1,151 @@
 import httpx
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 from models.schemas import Course
 from models.batch_models import SimplifiedCourse
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Upper bounds for log-normalization of YouTube engagement signals
+_MAX_VIEWS = 10_000_000
+_MAX_LIKES = 200_000
+
+
 class YouTubeProvider:
     """
     YouTube Data API v3 provider for educational content.
     """
-    
+
     def __init__(self):
         self.api_key = os.getenv("YOUTUBE_API_KEY")
         self.base_url = "https://www.googleapis.com/youtube/v3"
-    
-    async def fetch_courses(self, skill: str, max_results: int = 10, language: Optional[str] = None) -> List[SimplifiedCourse]:
+
+    async def fetch_courses(self, skill: str, max_results: int = 10, language: Optional[str] = None, preferences: Optional[List[str]] = None) -> List[SimplifiedCourse]:
         """
-        Fetch educational videos from YouTube.
-        
+        Fetch educational videos from YouTube, enriched with view/like statistics.
+
         Args:
             skill: The skill to search for
             max_results: Maximum number of results
             language: ISO 639-1 language code (e.g., 'en', 'es', 'fr')
+            preferences: Optional context keywords (e.g. ["Backend Developer", "FastAPI"])
         """
         if not self.api_key:
             logger.warning("YouTube API key not configured, skipping YouTube provider")
             return []
-        
-        query = f"{skill} tutorial"
-        
+
+        query = self._build_query(skill, preferences)
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                params = {
+                # Step 1: search for videos
+                search_params = {
                     "part": "snippet",
                     "q": query,
                     "type": "video",
                     "maxResults": min(max_results, 25),
                     "key": self.api_key,
-                    "videoDuration": "medium",  # Filter for substantial content
+                    "videoDuration": "medium",
+                    "relevanceLanguage": language or "en",
                 }
-                
-                # Add language filter if provided
-                if language:
-                    params["relevanceLanguage"] = language
-                else:
-                    params["relevanceLanguage"] = "en"
-                
-                response = await client.get(
-                    f"{self.base_url}/search",
-                    params=params
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                return self._parse_response(data)
-        
+
+                search_resp = await client.get(f"{self.base_url}/search", params=search_params)
+                search_resp.raise_for_status()
+                search_data = search_resp.json()
+
+                courses = self._parse_search_response(search_data)
+                if not courses:
+                    return courses
+
+                # Step 2: batch-fetch statistics for all video IDs
+                video_ids = [c.id.replace("youtube_", "") for c in courses]
+                stats = await self._fetch_statistics(client, video_ids)
+
+                # Step 3: attach stats to each course
+                for course in courses:
+                    vid_id = course.id.replace("youtube_", "")
+                    if vid_id in stats:
+                        course.view_count = stats[vid_id].get("viewCount")
+                        course.like_count = stats[vid_id].get("likeCount")
+
+                return courses
+
         except httpx.HTTPError as e:
             logger.error(f"YouTube API error: {str(e)}")
             return []
-    
-    def _parse_response(self, data: dict) -> List[SimplifiedCourse]:
+
+    async def _fetch_statistics(self, client: httpx.AsyncClient, video_ids: List[str]) -> Dict[str, dict]:
         """
-        Parse YouTube API response into SimplifiedCourse objects.
+        Batch-fetch statistics (viewCount, likeCount) for a list of video IDs.
+        Returns a dict keyed by video ID.
         """
+        try:
+            stats_resp = await client.get(
+                f"{self.base_url}/videos",
+                params={
+                    "part": "statistics",
+                    "id": ",".join(video_ids),
+                    "key": self.api_key,
+                },
+            )
+            stats_resp.raise_for_status()
+            stats_data = stats_resp.json()
+
+            result = {}
+            for item in stats_data.get("items", []):
+                vid_id = item["id"]
+                raw = item.get("statistics", {})
+                result[vid_id] = {
+                    "viewCount": int(raw["viewCount"]) if raw.get("viewCount") else None,
+                    "likeCount": int(raw["likeCount"]) if raw.get("likeCount") else None,
+                }
+            return result
+
+        except (httpx.HTTPError, KeyError, ValueError) as e:
+            logger.warning(f"Failed to fetch YouTube statistics: {e}")
+            return {}
+
+    def _build_query(self, skill: str, preferences: Optional[List[str]]) -> str:
+        """
+        Build a YouTube search query that incorporates preferences.
+        e.g. skill="python", preferences=["Backend Developer", "FastAPI"]
+             → "python FastAPI tutorial"
+        We pick the most specific preference (shortest, most likely a technology)
+        to avoid making the query too broad.
+        """
+        if not preferences:
+            return f"{skill} tutorial"
+
+        # Prefer technology/tool names over role names for query specificity
+        # Heuristic: shorter tokens are usually tool names ("FastAPI" vs "Backend Developer")
+        tech_prefs = sorted(preferences, key=lambda p: len(p.split()))
+        top_pref = tech_prefs[0]  # most specific preference
+
+        return f"{skill} {top_pref} tutorial"
+
+    def _parse_search_response(self, data: dict) -> List[SimplifiedCourse]:
+        """Parse YouTube search API response into SimplifiedCourse objects."""
         courses = []
-        
+
         for item in data.get("items", []):
             video_id = item["id"].get("videoId")
+            if not video_id:
+                continue
             snippet = item["snippet"]
-            
+
             course = SimplifiedCourse(
                 id=f"youtube_{video_id}",
                 title=snippet["title"],
                 provider="YouTube",
                 url=f"https://www.youtube.com/watch?v={video_id}",
-                description=snippet["description"],
+                description=snippet.get("description", ""),
                 tags=[t.lower() for t in snippet.get("tags", [])],
-                relevance_score=0.5,  # Will be adjusted by ranking engine
-                # Quality signal
+                relevance_score=0.5,
                 published_at=snippet.get("publishedAt"),
-                # Authority signals
                 channel_id=snippet.get("channelId"),
                 channel_name=snippet.get("channelTitle"),
             )
             courses.append(course)
-        
+
         return courses

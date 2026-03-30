@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 # Approximate upper bounds for log-normalization
 _MAX_STARS = 200_000
 _MAX_FORKS = 50_000
+_MAX_VIEWS = 10_000_000
+_MAX_LIKES = 200_000
 
 # Recency half-life in days (~1 year decay)
 _RECENCY_HALF_LIFE_DAYS = 365
@@ -116,13 +118,13 @@ class RankingEngine:
 
         # Exact skill match
         if skill_lower in text_lower:
-            score = 0.6
+            score = 0.4
         else:
             skill_words = skill_lower.split()
             matches = sum(1 for w in skill_words if w in text_lower)
-            score = (matches / len(skill_words)) * 0.5 if skill_words else 0.0
+            score = (matches / len(skill_words)) * 0.3 if skill_words else 0.0
 
-        # Preference matching (adds up to 0.4)
+        # Preference matching — weighted more heavily (up to 0.6)
         if preferences:
             pref_matches = 0.0
             for pref in preferences:
@@ -133,7 +135,7 @@ class RankingEngine:
                     pref_words = pref_lower.split()
                     if any(w in text_lower for w in pref_words):
                         pref_matches += 0.5
-            score += min((pref_matches / len(preferences)) * 0.4, 0.4)
+            score += min((pref_matches / len(preferences)) * 0.6, 0.6)
 
         return min(score, 1.0)
 
@@ -206,23 +208,31 @@ class RankingEngine:
 
     def _quality_score(self, course: Union[Course, SimplifiedCourse]) -> float:
         """
-        Improvement #1 — Quality signals.
-        GitHub: log-normalized stars + forks.
-        YouTube: no rating available from search API, returns neutral 0.5.
+        Quality signals per provider:
+          GitHub  — log-normalized stars + forks
+          YouTube — log-normalized view count + like count (falls back to 0.5 if stats unavailable)
         """
-        if not hasattr(course, "stars") or course.stars is None:
-            # Course objects (legacy) or YouTube without stats — neutral
-            if hasattr(course, "rating") and course.rating:
-                return min(course.rating / 5.0, 1.0)
-            return 0.5
+        # GitHub quality
+        if hasattr(course, "stars") and course.stars is not None:
+            stars = course.stars or 0
+            forks = course.forks or 0
+            star_score = math.log1p(stars) / math.log1p(_MAX_STARS)
+            fork_score = math.log1p(forks) / math.log1p(_MAX_FORKS)
+            return min(star_score * 0.7 + fork_score * 0.3, 1.0)
 
-        stars = course.stars or 0
-        forks = course.forks or 0
+        # YouTube quality — use engagement stats when available
+        view_count = getattr(course, "view_count", None)
+        like_count = getattr(course, "like_count", None)
+        if view_count is not None:
+            view_score = math.log1p(view_count) / math.log1p(_MAX_VIEWS)
+            like_score = math.log1p(like_count or 0) / math.log1p(_MAX_LIKES)
+            return min(view_score * 0.6 + like_score * 0.4, 1.0)
 
-        star_score = math.log1p(stars) / math.log1p(_MAX_STARS)
-        fork_score = math.log1p(forks) / math.log1p(_MAX_FORKS)
+        # Legacy Course object with rating
+        if hasattr(course, "rating") and course.rating:
+            return min(course.rating / 5.0, 1.0)
 
-        return min(star_score * 0.7 + fork_score * 0.3, 1.0)
+        return 0.5  # neutral fallback
 
     # ── 3. Recency ────────────────────────────────────────────────────────────
 

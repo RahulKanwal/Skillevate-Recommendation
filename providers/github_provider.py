@@ -14,18 +14,17 @@ class GitHubProvider:
     def __init__(self):
         self.base_url = "https://api.github.com"
     
-    async def fetch_courses(self, skill: str, max_results: int = 10, language: Optional[str] = None) -> List[SimplifiedCourse]:
+    async def fetch_courses(self, skill: str, max_results: int = 10, language: Optional[str] = None, preferences: Optional[List[str]] = None) -> List[SimplifiedCourse]:
         """
         Fetch educational repositories from GitHub.
-        
+
         Args:
             skill: The skill to search for
             max_results: Maximum number of results
-            language: ISO 639-1 language code (e.g., 'en', 'es', 'fr')
-                     Note: GitHub API doesn't directly support ISO language codes,
-                     so this is used for post-processing filtering
+            language: ISO 639-1 language code
+            preferences: Optional context keywords (e.g. ["Backend Developer", "FastAPI"])
         """
-        query = f"{skill} tutorial OR {skill} course OR {skill} learning"
+        query = self._build_query(skill, preferences)
         
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -51,6 +50,24 @@ class GitHubProvider:
             logger.error(f"GitHub API error: {str(e)}")
             return []
     
+    def _build_query(self, skill: str, preferences: Optional[List[str]]) -> str:
+        """
+        Build a GitHub search query incorporating preferences.
+        e.g. skill="python", preferences=["Backend Developer", "FastAPI"]
+             → "python FastAPI tutorial OR python FastAPI course OR python FastAPI learning"
+        """
+        if not preferences:
+            return f"{skill} tutorial OR {skill} course OR {skill} learning"
+
+        tech_prefs = sorted(preferences, key=lambda p: len(p.split()))
+        top_pref = tech_prefs[0]
+
+        return (
+            f"{skill} {top_pref} tutorial OR "
+            f"{skill} {top_pref} course OR "
+            f"{skill} {top_pref} learning"
+        )
+
     def _parse_response(self, data: dict, skill: str, language: Optional[str] = None) -> List[SimplifiedCourse]:
         """
         Parse GitHub API response into SimplifiedCourse objects.

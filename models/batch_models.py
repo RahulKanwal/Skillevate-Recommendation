@@ -106,6 +106,8 @@ class SimplifiedCourse(BaseModel):
     stars: Optional[int] = None          # GitHub stars
     forks: Optional[int] = None          # GitHub forks
     published_at: Optional[str] = None   # ISO date string (YouTube publishedAt / GitHub pushed_at)
+    view_count: Optional[int] = None     # YouTube view count
+    like_count: Optional[int] = None     # YouTube like count
 
     # Authority signals — used by ranking engine, not exposed in API response
     channel_id: Optional[str] = None     # YouTube channel ID

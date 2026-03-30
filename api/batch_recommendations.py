@@ -103,8 +103,8 @@ async def process_single_skill(
     logger.info(f"Fetching recommendations for skill: {skill}")
     
     provider_results = await asyncio.gather(
-        youtube.fetch_courses(skill, max_results, language),
-        github.fetch_courses(skill, max_results, language),
+        youtube.fetch_courses(skill, max_results, language, preferences),
+        github.fetch_courses(skill, max_results, language, preferences),
         return_exceptions=True
     )
     
