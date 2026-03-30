@@ -102,6 +102,16 @@ class SimplifiedCourse(BaseModel):
     tags: List[str] = []
     relevance_score: float = Field(ge=0.0, le=1.0)
 
+    # Quality signals — used by ranking engine, not exposed in API response
+    stars: Optional[int] = None          # GitHub stars
+    forks: Optional[int] = None          # GitHub forks
+    published_at: Optional[str] = None   # ISO date string (YouTube publishedAt / GitHub pushed_at)
+
+    # Authority signals — used by ranking engine, not exposed in API response
+    channel_id: Optional[str] = None     # YouTube channel ID
+    channel_name: Optional[str] = None   # YouTube channel name
+    org_login: Optional[str] = None      # GitHub org/user login
+
 
 class SkillRecommendationResult(BaseModel):
     """Recommendations for a single skill"""

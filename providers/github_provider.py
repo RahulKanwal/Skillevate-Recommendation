@@ -88,7 +88,13 @@ class GitHubProvider:
                 url=item["html_url"],
                 description=item.get("description", "No description available"),
                 tags=item.get("topics", []),
-                relevance_score=0.5  # Will be adjusted by ranking engine
+                relevance_score=0.5,  # Will be adjusted by ranking engine
+                # Quality signals
+                stars=item.get("stargazers_count", 0),
+                forks=item.get("forks_count", 0),
+                published_at=item.get("pushed_at"),  # last active date
+                # Authority signal
+                org_login=item.get("owner", {}).get("login"),
             )
             courses.append(course)
         

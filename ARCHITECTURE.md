@@ -1,27 +1,31 @@
-# Skillevate Recommendation System - Architecture Documentation
+# Skillevate Recommendation System — Architecture Documentation
 
 ## Table of Contents
 1. [System Overview](#system-overview)
 2. [Architecture Design](#architecture-design)
 3. [Application Flow](#application-flow)
 4. [Recommendation Engine](#recommendation-engine)
-5. [Component Details](#component-details)
-6. [Data Models](#data-models)
-7. [API Endpoints](#api-endpoints)
+5. [Authority Scoring](#authority-scoring)
+6. [Component Details](#component-details)
+7. [Data Models](#data-models)
+8. [API Endpoints](#api-endpoints)
+9. [Future Enhancements](#future-enhancements)
 
 ---
 
 ## System Overview
 
-The Skillevate Recommendation System is a FastAPI-based microservice that aggregates educational content from multiple providers (YouTube, GitHub) and provides personalized learning recommendations based on user skills and preferences.
+The Skillevate Recommendation System is a FastAPI-based microservice that aggregates educational content from multiple providers (YouTube, GitHub) and ranks it using a multi-signal scoring algorithm that considers relevance, content quality, source authority, and recency.
 
 ### Key Features
-- Asynchronous API calls for concurrent data fetching
+- Asynchronous concurrent API calls via `asyncio.gather()`
 - Multi-provider content aggregation
-- Intelligent ranking algorithm
+- Multi-signal ranking: relevance + quality + authority + recency
+- Spam/keyword-stuffing detection and penalty
+- Title-description coherence check
+- Authority boosting for official channels and trusted orgs
 - Automatic deduplication
 - RESTful API with OpenAPI documentation
-- Extensible architecture for adding new providers
 
 ### Technology Stack
 - **Framework**: FastAPI 0.115+
@@ -48,14 +52,15 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
 │                         (main.py)                            │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │              API Endpoint Layer                       │  │
-│  │         POST /api/recommendations                     │  │
+│  │   POST /api/recommendations                           │  │
+│  │   POST /api/batch-recommendations                     │  │
 │  └──────────────────────┬───────────────────────────────┘  │
 └─────────────────────────┼───────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Recommendation Orchestration Layer              │
-│                  (api/recommendations.py)                    │
+│     (api/recommendations.py, api/batch_recommendations.py)  │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  • Request validation                                 │  │
 │  │  • Provider initialization                            │  │
@@ -69,11 +74,16 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
             │                           │
             ▼                           ▼
 ┌───────────────────────┐   ┌───────────────────────┐
-│   Provider Layer      │   │   Provider Layer      │
-│  YouTube Provider     │   │  GitHub Provider      │
+│   YouTube Provider    │   │   GitHub Provider     │
 │ (youtube_provider.py) │   │ (github_provider.py)  │
-└───────────┬───────────┘   └───────────┬───────────┘
-            │                           │
+│                       │   │                       │
+│ Returns:              │   │ Returns:              │
+│  • title              │   │  • title              │
+│  • channel_id  ◄──┐  │   │  • org_login   ◄──┐  │
+│  • channel_name    │  │   │  • stars           │  │
+│  • published_at    │  │   │  • forks           │  │
+└───────────┬───────────┘   │  • pushed_at       │  │
+            │               └───────────┬───────────┘
             ▼                           ▼
 ┌───────────────────────┐   ┌───────────────────────┐
 │  YouTube Data API v3  │   │    GitHub REST API    │
@@ -81,18 +91,27 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
 └───────────────────────┘   └───────────────────────┘
             │                           │
             └─────────────┬─────────────┘
-                          │
+                          │ List[SimplifiedCourse]
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Ranking Engine Layer                      │
 │                     (core/ranking.py)                        │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  • Relevance scoring                                  │  │
-│  │  • Keyword matching                                   │  │
-│  │  • Popularity weighting                               │  │
-│  │  • Deduplication                                      │  │
-│  │  • Difficulty filtering                               │  │
-│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│   final_score = relevance(0.35) + quality(0.35)             │
+│               + authority(0.20) + recency(0.10)             │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │  Relevance   │  │   Quality    │  │    Authority     │  │
+│  │  • keyword   │  │  • stars     │  │  (core/          │  │
+│  │    match     │  │  • forks     │  │   authority.py)  │  │
+│  │  • spam      │  │  • log-norm  │  │  • official org  │  │
+│  │    penalty   │  └──────────────┘  │  • trusted chan  │  │
+│  │  • coherence │  ┌──────────────┐  └──────────────────┘  │
+│  └──────────────┘  │   Recency    │                         │
+│                    │  • exp decay │                         │
+│                    │  • 1yr half  │                         │
+│                    │    life      │                         │
+│                    └──────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -101,36 +120,33 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
 #### 1. API Endpoint Layer (`main.py`)
 - Receives HTTP requests
 - CORS configuration
-- Request routing
-- Error handling
-- Response formatting
+- Request routing and error handling
 
-#### 2. Orchestration Layer (`api/recommendations.py`)
+#### 2. Orchestration Layer (`api/recommendations.py`, `api/batch_recommendations.py`)
 - Validates incoming requests
 - Initializes content providers
 - Executes parallel API calls
-- Aggregates results from multiple providers
-- Invokes ranking engine
+- Aggregates and ranks results
 - Compiles final response with metadata
 
 #### 3. Provider Layer (`providers/`)
 - Abstracts external API interactions
-- Handles API-specific authentication
-- Transforms external data into internal format
-- Error handling and retry logic
-- Rate limiting compliance
+- Transforms external data into `SimplifiedCourse` objects
+- Now passes quality signals (stars, forks) and authority signals (channel_id, org_login) downstream
 
 #### 4. Ranking Layer (`core/ranking.py`)
-- Calculates relevance scores
-- Applies filtering rules
-- Removes duplicates
-- Sorts results by relevance
+- Calculates multi-signal relevance scores
+- Applies spam penalty and coherence check
+- Removes duplicates and sorts results
 
-#### 5. Data Model Layer (`models/schemas.py`)
-- Defines request/response structures
-- Data validation
-- Type safety
-- API documentation
+#### 5. Authority Layer (`core/authority.py`)
+- Maintains whitelists of trusted YouTube channels and GitHub orgs
+- Returns authority score tier for any given source + skill combination
+- Fully decoupled — update `AUTHORITY_SOURCES.md` and the dicts here to add new sources
+
+#### 6. Data Model Layer (`models/`)
+- `schemas.py` — original single-skill request/response models
+- `batch_models.py` — batch request/response models + `SimplifiedCourse`
 
 ---
 
@@ -153,7 +169,6 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
 2. FastAPI Endpoint (main.py)
    │
    ├─→ Validates request using Pydantic schema
-   ├─→ Logs incoming request
    ├─→ Calls get_recommendations()
    │
    ▼
@@ -163,51 +178,57 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
    │   ├─→ YouTubeProvider()
    │   └─→ GitHubProvider()
    │
-   ├─→ Execute parallel API calls:
-   │   │
-   │   ├─→ asyncio.gather(
-   │   │     youtube.fetch_courses("python programming", 10),
-   │   │     github.fetch_courses("python programming", 10)
-   │   │   )
-   │   │
-   │   ▼
-   │   [Concurrent Execution]
+   ├─→ Execute parallel API calls (asyncio.gather):
    │   │
    │   ├─→ YouTube Provider
-   │   │   ├─→ Build query: "python programming tutorial"
-   │   │   ├─→ Call YouTube API
-   │   │   ├─→ Parse response
-   │   │   └─→ Return List[Course]
+   │   │   ├─→ Query: "{skill} tutorial"
+   │   │   ├─→ Params: type=video, duration=medium, language=en
+   │   │   ├─→ Parse response → SimplifiedCourse
+   │   │   │   (includes channel_id, channel_name, published_at)
+   │   │   └─→ Return List[SimplifiedCourse]
    │   │
    │   └─→ GitHub Provider
-   │       ├─→ Build query: "python programming tutorial OR course"
-   │       ├─→ Call GitHub API
-   │       ├─→ Filter educational repos
-   │       ├─→ Parse response
-   │       └─→ Return List[Course]
+   │       ├─→ Query: "{skill} tutorial OR course OR learning"
+   │       ├─→ Sort by stars descending
+   │       ├─→ Filter: must contain educational keywords
+   │       ├─→ Parse response → SimplifiedCourse
+   │       │   (includes org_login, stars, forks, pushed_at)
+   │       └─→ Return List[SimplifiedCourse]
    │
-   ├─→ Aggregate results:
-   │   └─→ all_courses = youtube_results + github_results
+   ├─→ Aggregate: all_courses = youtube_results + github_results
    │
-   ├─→ Invoke Ranking Engine:
+   └─→ Invoke Ranking Engine
+       │
+       ▼
+4. Ranking Engine (core/ranking.py)
+   │
+   ├─→ For each course, compute final_score:
    │   │
-   │   ▼
-   │   4. Ranking Engine (core/ranking.py)
-   │      │
-   │      ├─→ For each course:
-   │      │   ├─→ Calculate keyword match score (title: 40%)
-   │      │   ├─→ Calculate keyword match score (description: 30%)
-   │      │   ├─→ Calculate popularity score (rating: 20%)
-   │      │   ├─→ Calculate tag match score (10%)
-   │      │   └─→ Total relevance_score = weighted sum
-   │      │
-   │      ├─→ Filter by difficulty level
-   │      ├─→ Remove duplicates (similar titles)
-   │      └─→ Sort by relevance_score (descending)
+   │   ├─→ relevance_score (weight: 0.35)
+   │   │   ├─→ title keyword match    (50% of relevance)
+   │   │   ├─→ description keyword match (35% of relevance)
+   │   │   ├─→ tag match              (15% of relevance)
+   │   │   ├─→ × spam_penalty         (halved if keyword density > 10%)
+   │   │   └─→ × coherence_multiplier (0.7–1.0 based on title/desc overlap)
+   │   │
+   │   ├─→ quality_score (weight: 0.35)
+   │   │   ├─→ GitHub: log1p(stars)/log1p(200k) × 0.7
+   │   │   │          + log1p(forks)/log1p(50k)  × 0.3
+   │   │   └─→ YouTube: 0.5 (neutral — no stats from search API)
+   │   │
+   │   ├─→ authority_score (weight: 0.20)
+   │   │   ├─→ Lookup channel_id / org_login in core/authority.py
+   │   │   ├─→ Official source for this skill → 1.0
+   │   │   ├─→ Trusted educational platform  → 0.8
+   │   │   └─→ Unknown source               → 0.0
+   │   │
+   │   └─→ recency_score (weight: 0.10)
+   │       └─→ exp(-days_since_update / 365)
+   │           today → 1.0 | 1 year ago → 0.37 | 3 years ago → 0.08
    │
-   ├─→ Apply max_results limit
-   │
-   └─→ Build response with metadata
+   ├─→ Filter by difficulty (if specified)
+   ├─→ Deduplicate by normalized title
+   └─→ Sort by final_score descending
    │
    ▼
 5. Response to Client
@@ -217,388 +238,404 @@ The Skillevate Recommendation System is a FastAPI-based microservice that aggreg
      "recommendations": [
        {
          "id": "youtube_abc123",
-         "title": "Python Tutorial for Beginners",
+         "title": "Python Tutorial — Official",
          "provider": "YouTube",
-         "url": "https://youtube.com/watch?v=abc123",
-         "relevance_score": 0.85,
+         "relevance_score": 0.82,
          ...
-       },
-       ...
-     ],
-     "metadata": {
-       "providers": {
-         "YouTube": {"status": "success", "count": 5},
-         "GitHub": {"status": "success", "count": 5}
        }
-     }
+     ],
+     "metadata": { "providers": {...} }
    }
-```
-
-### Sequence Diagram
-
-```
-Client          FastAPI         Orchestrator    YouTube API    GitHub API    Ranking Engine
-  │                │                 │               │              │              │
-  ├─Request────────>│                 │               │              │              │
-  │                ├─Validate────────>│               │              │              │
-  │                │                 ├─Fetch─────────>│              │              │
-  │                │                 ├─Fetch──────────┼─────────────>│              │
-  │                │                 │               │              │              │
-  │                │                 │<──Results──────┤              │              │
-  │                │                 │<──Results──────┼──────────────┤              │
-  │                │                 │               │              │              │
-  │                │                 ├─Aggregate──────┼──────────────┼──────────────>│
-  │                │                 │               │              │              │
-  │                │                 │<──Ranked Results──────────────┼──────────────┤
-  │                │<──Response──────┤               │              │              │
-  │<──JSON Response┤                 │               │              │              │
-  │                │                 │               │              │              │
 ```
 
 ---
 
 ## Recommendation Engine
 
-### Ranking Algorithm
+### Scoring Formula
 
-The ranking engine uses a weighted scoring system to calculate relevance:
-
-```python
-relevance_score = (
-    keyword_match_title * 0.40 +      # Title relevance
-    keyword_match_description * 0.30 + # Description relevance
-    popularity_score * 0.20 +          # Rating/stars
-    tag_match_score * 0.10             # Tag matching
+```
+final_score = (
+    relevance_score  × 0.35   +
+    quality_score    × 0.35   +
+    authority_score  × 0.20   +
+    recency_score    × 0.10
 )
 ```
 
-### Scoring Components
+Quality and authority together account for 55% of the score. This means keyword-rich but low-quality or unknown-source content cannot dominate the rankings.
 
-#### 1. Keyword Match Score (Title & Description)
+---
 
-**Algorithm:**
+### Signal 1 — Relevance Score (35%)
+
+Measures how well the content matches the requested skill and preferences.
+
 ```
-if exact_skill_match_in_text:
-    base_score = 0.8
+relevance = (
+    title_match    × 0.50 +
+    desc_match     × 0.35 +
+    tag_match      × 0.15
+) × spam_penalty × coherence_multiplier
+```
+
+**Keyword match logic (per field):**
+```
+if exact skill phrase in text:
+    base = 0.6
 else:
-    skill_words = skill.split()
-    matches = count(word in text for word in skill_words)
-    base_score = matches / len(skill_words)
+    base = (matching_skill_words / total_skill_words) × 0.5
 
-if preferences_provided:
-    preference_matches = count(pref in text for pref in preferences)
-    bonus = (preference_matches / len(preferences)) * 0.2
-    base_score += bonus
+if preferences provided:
+    pref_bonus = (matching_prefs / total_prefs) × 0.4
+    base += pref_bonus
 
-return min(base_score, 1.0)
+return min(base, 1.0)
 ```
 
-**Example:**
-- Skill: "python programming"
-- Title: "Python Programming Tutorial for Beginners"
-- Exact match found → base_score = 0.8
-- Preferences: ["web development"]
-- "web" not in title → no bonus
-- Final title score: 0.8
-
-#### 2. Popularity Score
-
-**Algorithm:**
+**Spam penalty (Improvement #2):**
 ```
-if course.rating exists:
-    popularity_score = min(rating / 5.0, 1.0)
+density = skill_word_count_in_text / total_word_count
+if density > 0.10:
+    penalty = 0.5   ← relevance halved
 else:
-    popularity_score = 0.0
+    penalty = 1.0
 ```
 
-**Example:**
-- GitHub repo with 4,500 stars
-- Normalized rating: min(4500/1000, 5.0) = 5.0
-- Popularity score: 5.0 / 5.0 = 1.0
-
-#### 3. Tag Match Score
-
-**Algorithm:**
+**Coherence multiplier (Improvement #4):**
 ```
-if skill in tags:
-    score = 1.0
-else:
-    score = 0.0
-
-if preferences:
-    pref_matches = count(pref in tags for pref in preferences)
-    score += pref_matches / len(preferences)
-
-return min(score / 2, 1.0)
+title_words = meaningful words in title (stop words removed)
+desc_words  = meaningful words in description
+overlap     = |title_words ∩ desc_words| / |title_words|
+coherence   = 0.7 + overlap × 0.3   # range: [0.7, 1.0]
 ```
+A title that shares no words with its description scores at 70% of its raw relevance.
 
-### Filtering & Deduplication
+---
 
-#### Difficulty Filtering
-```python
-if difficulty != "all":
-    courses = [c for c in courses 
-               if c.difficulty is None or 
-                  c.difficulty.lower() == difficulty.lower()]
+### Signal 2 — Quality Score (35%)
+
+**GitHub (Improvement #1):**
+```
+star_score = log1p(stars) / log1p(200_000)
+fork_score = log1p(forks) / log1p(50_000)
+quality    = star_score × 0.7 + fork_score × 0.3
 ```
 
-#### Deduplication
-```python
-# Normalize titles by removing special characters
-normalized_title = re.sub(r'[^\w\s]', '', title.lower())
+Log normalization prevents a 100k-star repo from completely dominating a 5k-star repo. Both are good; the difference is proportional, not linear.
 
-# Keep only first occurrence of each normalized title
-seen_titles = set()
-unique_courses = []
-for course in courses:
-    if normalized_title not in seen_titles:
-        seen_titles.add(normalized_title)
-        unique_courses.append(course)
+| Stars | Quality Score |
+|-------|--------------|
+| 0     | 0.00         |
+| 100   | 0.19         |
+| 1,000 | 0.38         |
+| 10,000| 0.57         |
+| 50,000| 0.73         |
+| 200,000| 1.00        |
+
+**YouTube:** Returns 0.5 (neutral) — the basic search API doesn't return view/like counts. A future improvement can add a second API call to `/videos?part=statistics` to get real engagement data.
+
+---
+
+### Signal 3 — Authority Score (20%)
+
+Rewards content from official and trusted educational sources. Defined in `core/authority.py` and documented in `AUTHORITY_SOURCES.md`.
+
+| Tier | Score | Example |
+|------|-------|---------|
+| official | 1.0 | Docker official YouTube channel for a "docker" query |
+| trusted_platform | 0.8 | freeCodeCamp, MIT OCW, Google for Developers |
+| unknown | 0.0 | Random creator / unknown org |
+
+**YouTube lookup order:**
+1. Is `channel_id` in the official list for this skill? → 1.0
+2. Is `channel_id` in the generic trusted list? → 0.8
+3. Does `channel_name` match a trusted name? → 0.8
+4. Otherwise → 0.0
+
+**GitHub lookup order:**
+1. Is `org_login` in the official list for this skill? → 1.0
+2. Is `org_login` in the generic trusted list? → 0.8
+3. Otherwise → 0.0
+
+---
+
+### Signal 4 — Recency Score (10%) — Improvement #3
+
+```
+days_old      = (today - published_at).days
+recency_score = exp(-days_old / 365)
 ```
 
-### Example Calculation
+| Age | Score |
+|-----|-------|
+| Today | 1.00 |
+| 6 months | 0.61 |
+| 1 year | 0.37 |
+| 2 years | 0.14 |
+| 3 years | 0.05 |
 
-**Input:**
-- Skill: "javascript"
-- Course: "JavaScript Tutorial for Beginners"
-- Description: "Learn JavaScript from scratch with practical examples"
-- Rating: 4.5/5
-- Tags: ["javascript", "tutorial", "beginner"]
+Content with unknown dates gets a neutral 0.5.
 
-**Calculation:**
+---
+
+### Worked Example
+
+**Input:** skill = "docker", preferences = ["microservices"]
+
+**Candidate A** — Docker official YouTube channel, published 3 months ago
 ```
-Title Match:
-  - "javascript" in title → 0.8
-  - Weight: 0.8 × 0.40 = 0.32
+relevance  = 0.70 (title + desc match, no spam)
+quality    = 0.50 (YouTube neutral)
+authority  = 1.00 (official Docker channel for "docker" skill)
+recency    = 0.78 (3 months old)
 
-Description Match:
-  - "javascript" in description → 0.8
-  - Weight: 0.8 × 0.30 = 0.24
-
-Popularity:
-  - Rating: 4.5/5 = 0.9
-  - Weight: 0.9 × 0.20 = 0.18
-
-Tag Match:
-  - "javascript" in tags → 1.0
-  - Weight: (1.0/2) × 0.10 = 0.05
-
-Total Relevance Score: 0.32 + 0.24 + 0.18 + 0.05 = 0.79
+final = 0.70×0.35 + 0.50×0.35 + 1.00×0.20 + 0.78×0.10
+      = 0.245 + 0.175 + 0.200 + 0.078 = 0.698
 ```
+
+**Candidate B** — Random creator, keyword-stuffed title, published 1 month ago
+```
+relevance  = 0.60 × 0.5 (spam penalty) = 0.30
+quality    = 0.50 (YouTube neutral)
+authority  = 0.00 (unknown channel)
+recency    = 0.92 (1 month old)
+
+final = 0.30×0.35 + 0.50×0.35 + 0.00×0.20 + 0.92×0.10
+      = 0.105 + 0.175 + 0.000 + 0.092 = 0.372
+```
+
+Candidate A wins (0.698 vs 0.372) despite the spammy title of Candidate B.
+
+---
+
+## Authority Scoring
+
+The authority system is split across two files:
+
+- `core/authority.py` — Python dicts and scoring logic
+- `AUTHORITY_SOURCES.md` — Human-readable registry with channel IDs, org names, and rationale
+
+### Adding a New Trusted Source
+
+1. Find the YouTube channel ID (permanent `UC...` identifier) or GitHub org login
+2. Add an entry to `AUTHORITY_SOURCES.md` with the rationale
+3. Add the ID/login to the appropriate dict in `core/authority.py`
+4. No other code changes needed
+
+### Trusted YouTube Channels (Generic)
+
+| Channel | Why |
+|---------|-----|
+| freeCodeCamp.org | Non-profit, peer-reviewed full courses |
+| Traversy Media | Industry-standard web dev tutorials |
+| Google for Developers | Official Google developer content |
+| IBM Technology | Official IBM educational content |
+| MIT OpenCourseWare | Academic lectures |
+| Corey Schafer | Deep-dive Python/programming tutorials |
+| CS Dojo | CS fundamentals |
+
+### Trusted GitHub Orgs (Generic)
+
+`google`, `microsoft`, `ibm`, `meta`, `aws`, `awslabs`, `apache`, `cncf`, `freecodecamp`
 
 ---
 
 ## Component Details
 
-### 1. YouTube Provider (`providers/youtube_provider.py`)
+### YouTube Provider (`providers/youtube_provider.py`)
 
-**Purpose:** Fetch educational videos from YouTube Data API v3
-
-**Key Methods:**
-- `fetch_courses(skill, max_results)` - Main entry point
-- `_parse_response(data)` - Transform API response to Course objects
-
-**API Parameters:**
-```python
-{
-    "part": "snippet",
-    "q": f"{skill} tutorial",
-    "type": "video",
-    "maxResults": max_results,
-    "key": api_key,
-    "videoDuration": "medium",  # Filter short videos
-    "relevanceLanguage": "en"
-}
+**API call:**
+```
+GET /youtube/v3/search
+  part=snippet
+  q="{skill} tutorial"
+  type=video
+  videoDuration=medium
+  relevanceLanguage=en
+  maxResults=min(max_results, 25)
 ```
 
-**Error Handling:**
-- Returns empty list on API failure
-- Logs errors for debugging
-- Graceful degradation (other providers still work)
+**Fields extracted into SimplifiedCourse:**
+- `snippet.title`, `snippet.description`, `snippet.tags`
+- `snippet.channelId` → `channel_id` (authority signal)
+- `snippet.channelTitle` → `channel_name` (authority fallback)
+- `snippet.publishedAt` → `published_at` (recency signal)
 
-### 2. GitHub Provider (`providers/github_provider.py`)
+### GitHub Provider (`providers/github_provider.py`)
 
-**Purpose:** Fetch educational repositories from GitHub
-
-**Key Methods:**
-- `fetch_courses(skill, max_results)` - Main entry point
-- `_parse_response(data, skill)` - Transform and filter results
-
-**Query Construction:**
-```python
-query = f"{skill} tutorial OR {skill} course OR {skill} learning"
+**API call:**
+```
+GET /search/repositories
+  q="{skill} tutorial OR {skill} course OR {skill} learning"
+  sort=stars
+  order=desc
+  per_page=min(max_results, 30)
 ```
 
-**Filtering Logic:**
+**Pre-filter:** repo name or description must contain one of: `tutorial`, `course`, `learn`, `guide`, `example`
+
+**Fields extracted into SimplifiedCourse:**
+- `name`, `description`, `topics`
+- `owner.login` → `org_login` (authority signal)
+- `stargazers_count` → `stars` (quality signal)
+- `forks_count` → `forks` (quality signal)
+- `pushed_at` → `published_at` (recency signal)
+
+### Ranking Engine (`core/ranking.py`)
+
+**Public method:**
 ```python
-# Only include repos with educational keywords
-keywords = ["tutorial", "course", "learn", "guide", "example"]
-if any(keyword in name.lower() or keyword in description.lower() 
-       for keyword in keywords):
-    include_repo = True
+rank_courses(courses, skill, preferences, difficulty) → List[SimplifiedCourse]
 ```
 
-**Rating Calculation:**
-```python
-# Convert GitHub stars to 5-star rating
-rating = min(stargazers_count / 1000, 5.0)
-```
+**Internal methods:**
 
-### 3. Ranking Engine (`core/ranking.py`)
-
-**Purpose:** Score, filter, and sort recommendations
-
-**Key Methods:**
-- `rank_courses()` - Main orchestration
-- `_calculate_score()` - Compute relevance score
-- `_keyword_match_score()` - Text matching logic
-- `_tag_match_score()` - Tag matching logic
-- `_matches_difficulty()` - Difficulty filtering
-- `_deduplicate()` - Remove duplicates
-
-**Extensibility:**
-- Easy to adjust weights
-- Can add new scoring factors
-- Pluggable filtering rules
+| Method | Purpose |
+|--------|---------|
+| `_calculate_score` | Orchestrates all 4 signals into final score |
+| `_relevance_score` | Keyword match × spam_penalty × coherence |
+| `_keyword_match_score` | Per-field text matching with preference bonus |
+| `_tag_match_score` | Tag/topic matching |
+| `_spam_penalty` | Keyword density check |
+| `_coherence_score` | Title/description word overlap |
+| `_quality_score` | Log-normalized stars/forks |
+| `_recency_score` | Exponential decay from published_at |
+| `_authority_score` | Delegates to core/authority.py |
+| `_deduplicate` | Normalized title deduplication |
+| `_matches_difficulty` | Difficulty filter (Course objects only) |
 
 ---
 
 ## Data Models
 
-### Request Model (`RecommendationRequest`)
+### SimplifiedCourse (`models/batch_models.py`)
+
+The internal representation used by both providers and the ranking engine.
 
 ```python
-{
-    "skill": str,                    # Required, min_length=1
-    "difficulty": DifficultyLevel,   # "beginner"|"intermediate"|"advanced"|"all"
-    "max_results": int,              # Default: 10, Range: 1-50
-    "preferences": List[str] | None  # Optional keywords
-}
+class SimplifiedCourse(BaseModel):
+    # API response fields
+    id: str
+    title: str
+    provider: str
+    url: str
+    description: str
+    tags: List[str] = []
+    relevance_score: float          # 0.0 – 1.0, set by ranking engine
+
+    # Quality signals (used by ranking, not in API response)
+    stars: Optional[int]            # GitHub stargazers_count
+    forks: Optional[int]            # GitHub forks_count
+    published_at: Optional[str]     # ISO date — YouTube publishedAt / GitHub pushed_at
+
+    # Authority signals (used by ranking, not in API response)
+    channel_id: Optional[str]       # YouTube channel ID (UC...)
+    channel_name: Optional[str]     # YouTube channel title
+    org_login: Optional[str]        # GitHub owner login
 ```
 
-### Response Model (`RecommendationResponse`)
+### Request Models
 
 ```python
-{
-    "skill": str,
-    "total_results": int,
-    "recommendations": List[Course],
-    "metadata": {
-        "providers": {
-            "YouTube": {"status": "success", "count": 5},
-            "GitHub": {"status": "success", "count": 5}
-        },
-        "total_fetched": int,
-        "filtered_count": int
-    }
-}
-```
+# Single skill
+RecommendationRequest:
+    skill: str                      # required
+    difficulty: DifficultyLevel     # beginner | intermediate | advanced | all
+    max_results: int                # 1–50, default 10
+    preferences: List[str] | None
 
-### Course Model
-
-```python
-{
-    "id": str,                    # Unique identifier
-    "title": str,                 # Course/video title
-    "provider": str,              # "YouTube" | "GitHub"
-    "url": str,                   # Direct link
-    "description": str,           # Content description
-    "difficulty": str | None,     # Difficulty level
-    "duration": str | None,       # Time to complete
-    "rating": float | None,       # 0.0 - 5.0
-    "tags": List[str],            # Keywords/topics
-    "relevance_score": float,     # 0.0 - 1.0
-    "thumbnail": str | None       # Image URL
-}
+# Batch
+BatchRecommendationRequest:
+    skills: List[SkillRequest]      # each has skill + optional preferences
+    max_results: int                # 1–50, default 10
+    language: str | None            # ISO 639-1 code
 ```
 
 ---
 
 ## API Endpoints
 
-### 1. Root Endpoint
-```
-GET /
-```
-**Response:**
+### POST /api/recommendations
+Single skill recommendation.
+
 ```json
+// Request
 {
-    "message": "Skillevate Recommendation API",
-    "version": "1.0.0",
-    "endpoints": {
-        "recommendations": "/api/recommendations"
+  "skill": "python programming",
+  "difficulty": "beginner",
+  "max_results": 10,
+  "preferences": ["web development"]
+}
+
+// Response
+{
+  "skill": "python programming",
+  "total_results": 10,
+  "recommendations": [
+    {
+      "id": "youtube_abc123",
+      "title": "...",
+      "provider": "YouTube",
+      "url": "...",
+      "relevance_score": 0.7234
     }
+  ],
+  "metadata": {
+    "providers": {
+      "YouTube": {"status": "success", "count": 5},
+      "GitHub": {"status": "success", "count": 5}
+    },
+    "total_fetched": 20,
+    "filtered_count": 10
+  }
 }
 ```
 
-### 2. Health Check
-```
-GET /health
-```
-**Response:**
+### POST /api/batch-recommendations
+Multiple skills in one request.
+
 ```json
+// Request
 {
-    "status": "healthy"
+  "skills": [
+    {"skill": "python", "preferences": ["backend", "fastapi"]},
+    {"skill": "docker", "preferences": ["microservices"]}
+  ],
+  "max_results": 5,
+  "language": "en"
 }
 ```
 
-### 3. Get Recommendations
-```
-POST /api/recommendations
-```
-
-**Request Body:**
+### GET /health
 ```json
-{
-    "skill": "python programming",
-    "difficulty": "beginner",
-    "max_results": 10,
-    "preferences": ["web development", "practical projects"]
-}
+{"status": "healthy"}
 ```
-
-**Response:** (See RecommendationResponse model above)
-
-**Status Codes:**
-- `200 OK` - Success
-- `422 Unprocessable Entity` - Validation error
-- `500 Internal Server Error` - Server error
 
 ---
 
 ## Performance Characteristics
 
-### Concurrency
-- Parallel API calls using `asyncio.gather()`
-- Non-blocking I/O with httpx AsyncClient
-- Typical response time: 1-3 seconds (depends on external APIs)
-
-### Scalability
-- Stateless design (easy horizontal scaling)
+- Parallel API calls via `asyncio.gather()` — both providers run concurrently
+- Typical response time: 1–3 seconds (bottleneck is external APIs)
+- Stateless design — horizontally scalable
 - No database dependencies
-- Can add caching layer (Redis) for improved performance
-
-### Error Resilience
-- Partial results on provider failure
-- Graceful degradation
-- Comprehensive error logging
 
 ---
 
 ## Future Enhancements
 
-### Phase 2: LLM Integration
-- Query enhancement using GPT-4
-- Semantic search with embeddings
-- Content summarization
-- Personalized difficulty assessment
+### Near-term (no LLM required)
+- YouTube statistics via second API call (`/videos?part=statistics`) for real view/like counts
+- TF-IDF or BM25 to replace simple keyword matching — more robust against gaming
+- Coursera provider (free public API)
+- Redis caching for repeated queries
 
-### Phase 3: Additional Features
-- User preference learning
-- Content caching (Redis)
-- More providers (Coursera, edX, Khan Academy)
+### Longer-term
+- Cosine similarity with TF-IDF vectors for semantic relevance
+- User preference learning from click history
 - Rate limiting and quota management
-- Analytics and monitoring
+- Analytics and monitoring dashboard
 
 ---
 
@@ -607,40 +644,12 @@ POST /api/recommendations
 ### Environment Variables
 
 ```bash
-# Required for YouTube
-YOUTUBE_API_KEY=your_youtube_api_key
-
-# Optional for future LLM features
-OPENAI_API_KEY=your_openai_api_key
+YOUTUBE_API_KEY=your_youtube_data_api_v3_key
 ```
 
-### Adding New Providers
+### Adding a New Provider
 
-1. Create new provider class in `providers/`
-2. Implement `fetch_courses(skill, max_results)` method
-3. Return `List[Course]` objects
-4. Add to orchestrator in `api/recommendations.py`
-5. Update `asyncio.gather()` call
-
-**Example:**
-```python
-# providers/coursera_provider.py
-class CourseraProvider:
-    async def fetch_courses(self, skill: str, max_results: int) -> List[Course]:
-        # Implementation
-        pass
-
-# api/recommendations.py
-coursera = CourseraProvider()
-results = await asyncio.gather(
-    youtube.fetch_courses(...),
-    github.fetch_courses(...),
-    coursera.fetch_courses(...)  # Add new provider
-)
-```
-
----
-
-## Conclusion
-
-The Skillevate Recommendation System provides a robust, scalable foundation for aggregating and ranking educational content. Its modular architecture allows easy extension with new providers and ranking algorithms, while the async design ensures optimal performance.
+1. Create `providers/your_provider.py` implementing `fetch_courses(skill, max_results) -> List[SimplifiedCourse]`
+2. Populate quality/authority fields in `SimplifiedCourse` where available
+3. Add to `asyncio.gather()` in `api/recommendations.py`
+4. Add authority entries in `core/authority.py` and `AUTHORITY_SOURCES.md`

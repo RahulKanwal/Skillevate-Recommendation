@@ -77,8 +77,13 @@ class YouTubeProvider:
                 provider="YouTube",
                 url=f"https://www.youtube.com/watch?v={video_id}",
                 description=snippet["description"],
-                tags=[skill.lower() for skill in snippet.get("tags", [])],
-                relevance_score=0.5  # Will be adjusted by ranking engine
+                tags=[t.lower() for t in snippet.get("tags", [])],
+                relevance_score=0.5,  # Will be adjusted by ranking engine
+                # Quality signal
+                published_at=snippet.get("publishedAt"),
+                # Authority signals
+                channel_id=snippet.get("channelId"),
+                channel_name=snippet.get("channelTitle"),
             )
             courses.append(course)
         
