@@ -4,6 +4,7 @@ import os
 from typing import List, Optional, Dict
 from models.schemas import Course
 from models.batch_models import SimplifiedCourse
+from core.skill_taxonomy import get_search_query_terms
 import logging
 
 logger = logging.getLogger(__name__)
@@ -124,21 +125,26 @@ class YouTubeProvider:
 
     def _build_query(self, skill: str, preferences: Optional[List[str]]) -> str:
         """
-        Build a YouTube search query that incorporates preferences.
-        e.g. skill="python", preferences=["Backend Developer", "FastAPI"]
-             → "python FastAPI tutorial"
-        We pick the most specific preference (shortest, most likely a technology)
-        to avoid making the query too broad.
+        Build a YouTube search query. Preferences take priority over taxonomy expansion.
+        e.g. skill="python", preferences=["FastAPI", "Backend Developer", "advanced"]
+             → "python FastAPI advanced tutorial"
         """
-        if not preferences:
-            return f"{skill} tutorial"
+        parts = [skill]
 
-        # Prefer technology/tool names over role names for query specificity
-        # Heuristic: shorter tokens are usually tool names ("FastAPI" vs "Backend Developer")
-        tech_prefs = sorted(preferences, key=lambda p: len(p.split()))
-        top_pref = tech_prefs[0]  # most specific preference
+        if preferences:
+            # Pick tech-specific preferences (shorter = more specific tool name)
+            tech_prefs = [p for p in preferences if len(p.split()) <= 2]
+            tech_prefs.sort(key=lambda p: len(p.split()))
+            # Add up to 2 most specific preferences to the query
+            parts.extend(tech_prefs[:2])
+        else:
+            # Fall back to taxonomy expansion only when no preferences given
+            terms = get_search_query_terms(skill, None)
+            if len(terms) > 1:
+                parts.append(terms[1])
 
-        return f"{skill} {top_pref} tutorial"
+        parts.append("tutorial")
+        return " ".join(parts)
 
     def _parse_search_response(self, data: dict) -> List[SimplifiedCourse]:
         """Parse YouTube search API response into SimplifiedCourse objects."""

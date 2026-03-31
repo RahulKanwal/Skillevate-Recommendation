@@ -24,6 +24,7 @@ from typing import List, Union, Optional
 from models.schemas import Course, DifficultyLevel
 from models.batch_models import SimplifiedCourse
 from core.authority import get_youtube_authority, get_github_authority
+from core.skill_taxonomy import expand_skill
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class RankingEngine:
         for course in courses:
             course.relevance_score = self._calculate_score(course, skill, preferences)
 
+        # Filter out results with very low relevance — catches completely off-topic content
+        courses = [c for c in courses if c.relevance_score >= 0.15]
+
         # Difficulty filter (Course objects only)
         if difficulty and difficulty != DifficultyLevel.ALL:
             if hasattr(courses[0], "difficulty"):
@@ -78,8 +82,8 @@ class RankingEngine:
         recency   = self._recency_score(course)
 
         score = (
-            relevance * 0.35
-            + quality  * 0.35
+            relevance * 0.45
+            + quality  * 0.25
             + authority * 0.20
             + recency  * 0.10
         )
@@ -93,23 +97,21 @@ class RankingEngine:
         skill: str,
         preferences: List[str],
     ) -> float:
-        title_score = self._keyword_match_score(course.title, skill, preferences)
-        desc_score  = self._keyword_match_score(course.description, skill, preferences)
-        tag_score   = self._tag_match_score(course.tags, skill, preferences)
+        # Expand skill to related terms for broader matching
+        expanded_terms = expand_skill(skill, preferences)
+
+        title_score = self._keyword_match_score(course.title, skill, preferences, expanded_terms)
+        desc_score  = self._keyword_match_score(course.description, skill, preferences, expanded_terms)
+        tag_score   = self._tag_match_score(course.tags, skill, preferences, expanded_terms)
 
         raw = title_score * 0.5 + desc_score * 0.35 + tag_score * 0.15
 
-        # Spam penalty: if keyword density in title+desc is suspiciously high, halve it
-        spam_multiplier = self._spam_penalty(
-            f"{course.title} {course.description}", skill
-        )
-
-        # Coherence: title and description should share meaningful words
+        spam_multiplier = self._spam_penalty(f"{course.title} {course.description}", skill)
         coherence = self._coherence_score(course.title, course.description)
 
         return min(raw * spam_multiplier * coherence, 1.0)
 
-    def _keyword_match_score(self, text: str, skill: str, preferences: List[str]) -> float:
+    def _keyword_match_score(self, text: str, skill: str, preferences: List[str], expanded_terms: List[str] = None) -> float:
         if not text:
             return 0.0
 
@@ -120,9 +122,16 @@ class RankingEngine:
         if skill_lower in text_lower:
             score = 0.4
         else:
+            # Check expanded terms — partial credit for related terms
+            expansion_match = 0.0
+            if expanded_terms:
+                for term in expanded_terms[1:]:  # skip index 0 (original skill)
+                    if term in text_lower:
+                        expansion_match = 0.25
+                        break
             skill_words = skill_lower.split()
-            matches = sum(1 for w in skill_words if w in text_lower)
-            score = (matches / len(skill_words)) * 0.3 if skill_words else 0.0
+            word_match = (sum(1 for w in skill_words if w in text_lower) / len(skill_words)) * 0.3 if skill_words else 0.0
+            score = max(word_match, expansion_match)
 
         # Preference matching — weighted more heavily (up to 0.6)
         if preferences:
@@ -139,7 +148,7 @@ class RankingEngine:
 
         return min(score, 1.0)
 
-    def _tag_match_score(self, tags: List[str], skill: str, preferences: List[str]) -> float:
+    def _tag_match_score(self, tags: List[str], skill: str, preferences: List[str], expanded_terms: List[str] = None) -> float:
         if not tags:
             return 0.0
 
@@ -150,6 +159,13 @@ class RankingEngine:
             sum(1 for w in skill_lower.split() if any(w in t for t in tags_lower))
             / max(len(skill_lower.split()), 1) * 0.3
         )
+
+        # Boost if any expanded term appears in tags
+        if not skill_match and expanded_terms:
+            for term in expanded_terms[1:]:
+                if any(term in t for t in tags_lower):
+                    skill_match = 0.2
+                    break
 
         pref_match = 0.0
         if preferences:

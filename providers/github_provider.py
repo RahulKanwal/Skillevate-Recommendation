@@ -2,6 +2,7 @@ import httpx
 from typing import List, Optional
 from models.schemas import Course
 from models.batch_models import SimplifiedCourse
+from core.skill_taxonomy import get_search_query_terms
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,21 +53,21 @@ class GitHubProvider:
     
     def _build_query(self, skill: str, preferences: Optional[List[str]]) -> str:
         """
-        Build a GitHub search query incorporating preferences.
-        e.g. skill="python", preferences=["Backend Developer", "FastAPI"]
-             → "python FastAPI tutorial OR python FastAPI course OR python FastAPI learning"
+        Build a GitHub search query. Preferences take priority over taxonomy expansion.
         """
-        if not preferences:
-            return f"{skill} tutorial OR {skill} course OR {skill} learning"
+        parts = [skill]
 
-        tech_prefs = sorted(preferences, key=lambda p: len(p.split()))
-        top_pref = tech_prefs[0]
+        if preferences:
+            tech_prefs = [p for p in preferences if len(p.split()) <= 2]
+            tech_prefs.sort(key=lambda p: len(p.split()))
+            parts.extend(tech_prefs[:1])  # one preference for GitHub to keep query tight
+        else:
+            terms = get_search_query_terms(skill, None)
+            if len(terms) > 1:
+                parts.append(terms[1])
 
-        return (
-            f"{skill} {top_pref} tutorial OR "
-            f"{skill} {top_pref} course OR "
-            f"{skill} {top_pref} learning"
-        )
+        base = " ".join(parts)
+        return f"{base} tutorial OR {base} course OR {base} learning"
 
     def _parse_response(self, data: dict, skill: str, language: Optional[str] = None) -> List[SimplifiedCourse]:
         """
