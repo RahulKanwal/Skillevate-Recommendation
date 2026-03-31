@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import os
 from typing import List, Optional, Dict
@@ -39,30 +40,45 @@ class YouTubeProvider:
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                # Step 1: search for videos
-                search_params = {
+                # Run preference-based query and institute query in parallel
+                institute_query = f"{skill} lecture course MIT Stanford Harvard"
+                per_query_results = min(max_results, 20)
+
+                search_params_main = {
                     "part": "snippet",
                     "q": query,
                     "type": "video",
-                    "maxResults": min(max_results, 25),
+                    "maxResults": per_query_results,
                     "key": self.api_key,
                     "videoDuration": "medium",
                     "relevanceLanguage": language or "en",
                 }
+                search_params_institute = {**search_params_main, "q": institute_query}
 
-                search_resp = await client.get(f"{self.base_url}/search", params=search_params)
-                search_resp.raise_for_status()
-                search_data = search_resp.json()
+                main_resp, inst_resp = await asyncio.gather(
+                    client.get(f"{self.base_url}/search", params=search_params_main),
+                    client.get(f"{self.base_url}/search", params=search_params_institute),
+                )
+                main_resp.raise_for_status()
+                inst_resp.raise_for_status()
 
-                courses = self._parse_search_response(search_data)
+                courses = self._parse_search_response(main_resp.json())
+                inst_courses = self._parse_search_response(inst_resp.json())
+
+                # Merge, deduplicate by video ID
+                seen_ids = {c.id for c in courses}
+                for c in inst_courses:
+                    if c.id not in seen_ids:
+                        courses.append(c)
+                        seen_ids.add(c.id)
+
                 if not courses:
                     return courses
 
-                # Step 2: batch-fetch statistics for all video IDs
+                # Batch-fetch statistics for all video IDs
                 video_ids = [c.id.replace("youtube_", "") for c in courses]
                 stats = await self._fetch_statistics(client, video_ids)
 
-                # Step 3: attach stats to each course
                 for course in courses:
                     vid_id = course.id.replace("youtube_", "")
                     if vid_id in stats:
