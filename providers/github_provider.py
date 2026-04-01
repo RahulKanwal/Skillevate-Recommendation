@@ -86,7 +86,7 @@ class GitHubProvider:
             desc_lower = (item.get("description") or "").lower()
             
             if not any(keyword in name_lower or keyword in desc_lower 
-                      for keyword in ["tutorial", "course", "learn", "guide", "example"]):
+                      for keyword in ["tutorial", "course", "learn", "guide", "example", "awesome", "roadmap", "cheatsheet", "resources"]):
                 continue
             
             # Language filtering: skip if description contains non-Latin scripts when English is requested
