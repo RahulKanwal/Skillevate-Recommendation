@@ -80,6 +80,7 @@ class RankingEngine:
         quality   = self._quality_score(course)
         authority = self._authority_score(course, skill)
         recency   = self._recency_score(course)
+        difficulty_multiplier = self._difficulty_mismatch_penalty(course, preferences)
 
         score = (
             relevance * 0.45
@@ -87,7 +88,7 @@ class RankingEngine:
             + authority * 0.20
             + recency  * 0.10
         )
-        return round(min(score, 1.0), 4)
+        return round(min(score * difficulty_multiplier, 1.0), 4)
 
     # ── 1. Relevance (keyword match + spam penalty + coherence) ───────────────
 
@@ -292,6 +293,94 @@ class RankingEngine:
         return 0.0
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _difficulty_mismatch_penalty(
+        self,
+        course: Union[Course, SimplifiedCourse],
+        preferences: List[str],
+    ) -> float:
+        """
+        Detects difficulty level requested in preferences and penalizes content
+        that signals a conflicting difficulty level.
+
+        Returns a multiplier:
+          1.0  — no difficulty preference, or content matches, or no signal in content
+          0.5  — soft mismatch (e.g. user wants advanced, content says "beginner")
+          0.25 — hard mismatch (e.g. user wants advanced, content says "for absolute beginners")
+        """
+        if not preferences:
+            return 1.0
+
+        # Difficulty keyword groups
+        BEGINNER_SIGNALS = {
+            "beginner", "beginners", "introduction", "intro", "basics",
+            "basic", "getting started", "crash course", "for dummies",
+            "absolute beginner", "zero to hero", "from scratch", "101",
+            "no experience", "first steps", "start here",
+        }
+        ADVANCED_SIGNALS = {
+            "advanced", "expert", "deep dive", "in depth", "internals",
+            "under the hood", "production", "architecture", "senior",
+            "mastery", "master class", "professional",
+        }
+        INTERMEDIATE_SIGNALS = {
+            "intermediate", "mid level", "next level", "beyond basics",
+            "practical", "real world", "hands on",
+        }
+
+        # Detect requested difficulty from preferences
+        requested = None
+        for pref in preferences:
+            p = pref.lower().strip()
+            if p in {"beginner", "beginners", "basic", "basics", "introduction", "intro"}:
+                requested = "beginner"
+                break
+            if p in {"advanced", "expert", "senior"}:
+                requested = "advanced"
+                break
+            if p in {"intermediate", "mid", "mid-level"}:
+                requested = "intermediate"
+                break
+
+        if requested is None:
+            return 1.0  # no difficulty preference expressed
+
+        # Detect content difficulty from title + description
+        content = f"{course.title} {course.description}".lower()
+
+        def _has_signal(signals: set) -> bool:
+            return any(s in content for s in signals)
+
+        content_is_beginner     = _has_signal(BEGINNER_SIGNALS)
+        content_is_advanced     = _has_signal(ADVANCED_SIGNALS)
+        content_is_intermediate = _has_signal(INTERMEDIATE_SIGNALS)
+
+        # Apply penalty for mismatch
+        if requested == "advanced":
+            if content_is_beginner:
+                # Strong mismatch — "Python for Beginners" when user wants advanced
+                return 0.25
+            if content_is_intermediate:
+                # Soft mismatch
+                return 0.6
+            if content_is_advanced:
+                return 1.0  # perfect match, no penalty
+
+        elif requested == "beginner":
+            if content_is_advanced:
+                return 0.25
+            if content_is_intermediate:
+                return 0.6
+            if content_is_beginner:
+                return 1.0
+
+        elif requested == "intermediate":
+            if content_is_beginner or content_is_advanced:
+                return 0.6  # softer penalty — intermediate is more flexible
+            if content_is_intermediate:
+                return 1.0
+
+        return 1.0  # no detectable signal in content — no penalty
 
     def _matches_difficulty(self, course: Course, difficulty: DifficultyLevel) -> bool:
         if not course.difficulty:
