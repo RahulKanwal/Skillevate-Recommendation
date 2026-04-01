@@ -10,6 +10,7 @@ from models.batch_models import (
 from providers.youtube_provider import YouTubeProvider
 from providers.github_provider import GitHubProvider
 from core.ranking import RankingEngine
+from core.content_similarity import rerank_with_tfidf
 
 logger = logging.getLogger(__name__)
 
@@ -128,9 +129,9 @@ async def process_single_skill(
         skill,
         preferences
     )
-    
-    # Apply max_results limit
-    final_courses = ranked_courses[:max_results]
+
+    # TF-IDF re-ranking with MMR diversity
+    final_courses = rerank_with_tfidf(ranked_courses, skill, preferences, max_results)
     
     logger.info(f"Returning {len(final_courses)} recommendations for skill: {skill}")
     

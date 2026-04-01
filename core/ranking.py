@@ -81,6 +81,7 @@ class RankingEngine:
         authority = self._authority_score(course, skill)
         recency   = self._recency_score(course)
         difficulty_multiplier = self._difficulty_mismatch_penalty(course, preferences)
+        meta_multiplier       = self._meta_content_penalty(course)
 
         score = (
             relevance * 0.45
@@ -88,7 +89,7 @@ class RankingEngine:
             + authority * 0.20
             + recency  * 0.10
         )
-        return round(min(score * difficulty_multiplier, 1.0), 4)
+        return round(min(score * difficulty_multiplier * meta_multiplier, 1.0), 4)
 
     # ── 1. Relevance (keyword match + spam penalty + coherence) ───────────────
 
@@ -293,6 +294,60 @@ class RankingEngine:
         return 0.0
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _meta_content_penalty(self, course: Union[Course, SimplifiedCourse]) -> float:
+        """
+        Penalizes meta-content — videos/repos that are *about* learning resources
+        rather than being learning resources themselves.
+
+        Examples of penalized content:
+          - "I Tried 50 Python Courses. Here Are Top 5."
+          - "Stanford's FREE data science book and course are the best yet"
+          - "Best Python Resources for 2024"
+          - "Is this course worth it?"
+
+        Returns:
+          0.1  — strong meta-content signal (review/list/recommendation video)
+          0.5  — moderate signal
+          1.0  — no signal, no penalty
+        """
+        title = course.title.lower()
+        desc  = (course.description or "").lower()[:300]
+        text  = f"{title} {desc}"
+
+        # Strong meta-content patterns — these are almost never actual courses
+        strong_patterns = [
+            r"i tried \d+",
+            r"top \d+ (courses|resources|tutorials|books|videos)",
+            r"best \d+ (courses|resources|tutorials|books|videos)",
+            r"\d+ (courses|resources|tutorials|books) (you|to|for|that)",
+            r"(courses|resources|tutorials) (you should|to learn|for \d+)",
+            r"(free|best|top) .{0,30} (book|course|resource) .{0,20} (best|yet|ever|review)",
+            r"is .{0,30} (course|tutorial|book) worth",
+            r"(review|reviewed|reviewing) .{0,30} (course|tutorial|book)",
+            r"(ranked|ranking) .{0,30} (courses|tutorials|resources)",
+        ]
+
+        # Moderate patterns — could be meta or could be legitimate
+        moderate_patterns = [
+            r"(best|top) (python|javascript|docker|kubernetes|react|fastapi|django).{0,20}(courses|resources|tutorials)",
+            r"(free|paid) (courses|resources|tutorials) for",
+            r"how i (learned|learn|studied|study)",
+            r"my (learning|study) (journey|path|roadmap)",
+            r"(roadmap|path) (for|to) (learn|become|master)",
+        ]
+
+        for pattern in strong_patterns:
+            if re.search(pattern, text):
+                logger.debug(f"Strong meta-content penalty: '{course.title}'")
+                return 0.1
+
+        for pattern in moderate_patterns:
+            if re.search(pattern, text):
+                logger.debug(f"Moderate meta-content penalty: '{course.title}'")
+                return 0.5
+
+        return 1.0
 
     def _difficulty_mismatch_penalty(
         self,
