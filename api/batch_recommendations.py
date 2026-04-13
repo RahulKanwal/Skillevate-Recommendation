@@ -9,6 +9,7 @@ from models.batch_models import (
 )
 from providers.youtube_provider import YouTubeProvider
 from providers.github_provider import GitHubProvider
+from providers.devto_provider import DevToProvider
 from core.ranking import RankingEngine
 from core.content_similarity import rerank_with_tfidf
 
@@ -99,6 +100,7 @@ async def process_single_skill(
     # Initialize providers
     youtube = YouTubeProvider()
     github = GitHubProvider()
+    devto = DevToProvider()
     
     # Fetch from providers in parallel
     logger.info(f"Fetching recommendations for skill: {skill}")
@@ -106,6 +108,7 @@ async def process_single_skill(
     provider_results = await asyncio.gather(
         youtube.fetch_courses(skill, max_results, language, preferences),
         github.fetch_courses(skill, max_results, language, preferences),
+        devto.fetch_courses(skill, max_results, language, preferences),
         return_exceptions=True
     )
     
@@ -114,7 +117,7 @@ async def process_single_skill(
     provider_stats = {}
     
     for idx, result in enumerate(provider_results):
-        provider_name = ["YouTube", "GitHub"][idx]
+        provider_name = ["YouTube", "GitHub", "Dev.to"][idx]
         if isinstance(result, Exception):
             logger.error(f"Error fetching from {provider_name} for skill {skill}: {result}")
             provider_stats[provider_name] = {"status": "error", "message": str(result)}

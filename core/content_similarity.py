@@ -46,19 +46,19 @@ def rerank_with_tfidf(
     top_n: int,
 ) -> List[Union[Course, SimplifiedCourse]]:
     """
-    Re-rank courses using TF-IDF similarity + MMR diversity.
-
-    Args:
-        courses: Already-ranked list from the ranking engine
-        skill: The skill being searched
-        preferences: User preferences
-        top_n: Number of results to return
-
-    Returns:
-        Diversified list of up to top_n courses
+    Re-rank courses using TF-IDF similarity + MMR diversity,
+    with a per-provider cap to ensure balanced results.
     """
     if len(courses) <= 1:
         return courses[:top_n]
+
+    # Per-provider caps — prevents any single provider dominating
+    # Distribute top_n roughly: YouTube ~40%, GitHub ~30%, Dev.to ~30%
+    provider_caps = {
+        "YouTube": max(2, round(top_n * 0.40)),
+        "GitHub":  max(1, round(top_n * 0.30)),
+        "Dev.to":  max(1, round(top_n * 0.30)),
+    }
 
     # Build corpus — title is doubled to give it more weight
     documents = [_build_document(c) for c in courses]
@@ -90,8 +90,8 @@ def rerank_with_tfidf(
             )
             course.relevance_score = round(min(blended, 1.0), 4)
 
-        # MMR re-ranking for diversity
-        return _mmr(courses, course_vectors, tfidf_scores, top_n)
+        # MMR re-ranking for diversity with provider caps
+        return _mmr(courses, course_vectors, tfidf_scores, top_n, provider_caps)
 
     except Exception as e:
         logger.warning(f"TF-IDF re-ranking failed, falling back to original order: {e}")
@@ -103,23 +103,23 @@ def _mmr(
     vectors,
     relevance_scores: np.ndarray,
     top_n: int,
+    provider_caps: dict = None,
 ) -> List[Union[Course, SimplifiedCourse]]:
     """
-    Maximal Marginal Relevance selection.
+    Maximal Marginal Relevance selection with optional per-provider caps.
     Iteratively picks the course that best balances relevance and diversity.
     """
     selected_indices = []
     remaining = list(range(len(courses)))
+    provider_counts: dict = {}
 
     # Precompute pairwise cosine similarity between all courses
     pairwise_sim = cosine_similarity(vectors).tolist()
 
     while len(selected_indices) < top_n and remaining:
         if not selected_indices:
-            # First pick: highest relevance score
             best = max(remaining, key=lambda i: relevance_scores[i])
         else:
-            # MMR: balance relevance vs similarity to already-selected
             def mmr_score(i):
                 rel = float(relevance_scores[i])
                 max_sim = max(pairwise_sim[i][j] for j in selected_indices)
@@ -127,7 +127,32 @@ def _mmr(
 
             best = max(remaining, key=mmr_score)
 
+        provider = courses[best].provider
+        cap = provider_caps.get(provider, top_n) if provider_caps else top_n
+        current_count = provider_counts.get(provider, 0)
+
+        if current_count >= cap:
+            # Provider cap reached — skip and try next best from eligible providers
+            remaining.remove(best)
+            eligible = [i for i in remaining
+                        if provider_counts.get(courses[i].provider, 0)
+                        < (provider_caps.get(courses[i].provider, top_n) if provider_caps else top_n)]
+            if not eligible:
+                # All providers at cap — fill remaining from any provider
+                eligible = remaining
+            if not eligible:
+                break
+            if not selected_indices:
+                best = max(eligible, key=lambda i: relevance_scores[i])
+            else:
+                best = max(eligible, key=mmr_score)
+            remaining.remove(best)
+            provider = courses[best].provider
+
+        else:
+            remaining.remove(best)
+
         selected_indices.append(best)
-        remaining.remove(best)
+        provider_counts[provider] = provider_counts.get(provider, 0) + 1
 
     return [courses[i] for i in selected_indices]

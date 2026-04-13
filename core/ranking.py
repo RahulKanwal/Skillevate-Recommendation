@@ -291,6 +291,10 @@ class RankingEngine:
             org_login = getattr(course, "org_login", None)
             return get_github_authority(org_login, skill)
 
+        # Dev.to articles — neutral authority (community content, no whitelist)
+        if course.provider == "Dev.to":
+            return 0.0
+
         return 0.0
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -322,10 +326,12 @@ class RankingEngine:
             r"best \d+ (courses|resources|tutorials|books|videos)",
             r"\d+ (courses|resources|tutorials|books) (you|to|for|that)",
             r"(courses|resources|tutorials) (you should|to learn|for \d+)",
-            r"(free|best|top) .{0,30} (book|course|resource) .{0,20} (best|yet|ever|review)",
+            r"(free|best|top) .{0,30} (book|course|resource) .{0,20} (best|yet|ever|review|excellent|amazing|great)",
             r"is .{0,30} (course|tutorial|book) worth",
             r"(review|reviewed|reviewing) .{0,30} (course|tutorial|book)",
             r"(ranked|ranking) .{0,30} (courses|tutorials|resources)",
+            r"(free|paid) .{0,20} (courses?|tutorials?) .{0,20} (are|is) .{0,20} (excellent|great|amazing|best|good)",
+            r"(harvard|stanford|mit|coursera|udemy).{0,30}(free|best).{0,30}(course|tutorial)",
         ]
 
         # Moderate patterns — could be meta or could be legitimate
@@ -413,25 +419,25 @@ class RankingEngine:
         # Apply penalty for mismatch
         if requested == "advanced":
             if content_is_beginner:
-                # Strong mismatch — "Python for Beginners" when user wants advanced
-                return 0.25
+                return 0.1  # very strong mismatch
             if content_is_intermediate:
-                # Soft mismatch
-                return 0.6
+                return 0.5
             if content_is_advanced:
-                return 1.0  # perfect match, no penalty
+                return 1.0
 
         elif requested == "beginner":
             if content_is_advanced:
-                return 0.25
+                return 0.1
             if content_is_intermediate:
                 return 0.6
             if content_is_beginner:
                 return 1.0
 
         elif requested == "intermediate":
-            if content_is_beginner or content_is_advanced:
-                return 0.6  # softer penalty — intermediate is more flexible
+            if content_is_beginner:
+                return 0.3  # stronger penalty than before
+            if content_is_advanced:
+                return 0.5
             if content_is_intermediate:
                 return 1.0
 
