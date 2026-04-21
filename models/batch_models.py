@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 from typing import List, Optional
 
 
@@ -19,8 +19,12 @@ class SkillRequest(BaseModel):
     """Individual skill with optional preferences"""
     skill: str = Field(..., min_length=1, description="Skill or topic to learn")
     preferences: Optional[List[str]] = Field(
-        default=None, 
-        description="Career goals, learning styles, time commitments, or technologies"
+        default=None,
+        description=(
+            "Career goals, technologies, learning style, and audience. "
+            "Examples: 'beginner', 'senior developer', 'quick tutorials', "
+            "'comprehensive courses', 'project-based', 'FastAPI'."
+        ),
     )
     
     @field_validator('skill')
@@ -113,6 +117,9 @@ class SimplifiedCourse(BaseModel):
     channel_id: Optional[str] = None     # YouTube channel ID
     channel_name: Optional[str] = None   # YouTube channel name
     org_login: Optional[str] = None      # GitHub org/user login
+
+    # Internal-only metadata for ranking (not serialized in API responses)
+    _yt_internal: dict = PrivateAttr(default_factory=dict)
 
 
 class SkillRecommendationResult(BaseModel):

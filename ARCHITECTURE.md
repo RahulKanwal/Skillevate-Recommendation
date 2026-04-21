@@ -15,7 +15,7 @@
 
 ## System Overview
 
-The Skillevate Recommendation System is a FastAPI-based microservice that aggregates educational content from multiple providers (YouTube, GitHub) and ranks it using a multi-signal scoring algorithm that considers relevance, content quality, source authority, and recency.
+The Skillevate Recommendation System is a FastAPI-based microservice that aggregates educational content from multiple providers (**YouTube** including playlists, **GitHub**, **Dev.to**) and ranks it using a multi-signal scoring algorithm that considers relevance, content quality, source authority, and recency, followed by TF–IDF and MMR re-ranking.
 
 ### Key Features
 - Asynchronous concurrent API calls via `asyncio.gather()`

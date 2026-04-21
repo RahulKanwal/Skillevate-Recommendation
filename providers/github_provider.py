@@ -70,66 +70,50 @@ class GitHubProvider:
         return f"{base} tutorial OR {base} course OR {base} learning"
 
     def _parse_response(self, data: dict, skill: str, language: Optional[str] = None) -> List[SimplifiedCourse]:
-        """
-        Parse GitHub API response into SimplifiedCourse objects.
-        
-        Args:
-            data: GitHub API response data
-            skill: The skill being searched
-            language: Optional language filter
-        """
+        """Parse GitHub API response into SimplifiedCourse objects."""
+        import re as _re
         courses = []
-        
+
         for item in data.get("items", []):
             name_lower = item["name"].lower()
             desc_lower = (item.get("description") or "").lower()
 
-            # Must have an educational keyword in name OR description
-            if not any(keyword in name_lower or keyword in desc_lower
-                      for keyword in ["tutorial", "course", "learn", "guide", "example",
-                                      "awesome", "roadmap", "cheatsheet", "resources", "notes"]):
-                continue
-
-            # Filter out application/project repos — these use the skill but aren't learning resources
-            app_keywords = {"app", "system", "platform", "tool", "bot", "scanner",
-                            "detector", "tracker", "manager", "dashboard", "service"}
-            edu_in_name = any(k in name_lower for k in ["tutorial", "course", "learn",
-                                                          "guide", "awesome", "roadmap",
-                                                          "cheatsheet", "example", "notes"])
-            is_app_repo = any(k in name_lower for k in app_keywords)
-            if is_app_repo and not edu_in_name:
-                logger.debug(f"Skipping app repo: {item['name']}")
-                continue
-
-            # Tighter educational check: "learn" must appear as standalone word
-            # not as part of compound words like "deep learning", "machine learning"
-            # Re-check with word boundary for "learn" specifically
-            import re as _re
-            has_edu_keyword = (
-                any(k in name_lower for k in ["tutorial", "course", "guide", "awesome",
-                                               "roadmap", "cheatsheet", "example", "notes"])
-                or bool(_re.search(r'\blearn\b', name_lower + " " + desc_lower))
-            )
-            if not has_edu_keyword:
-                logger.debug(f"Skipping non-educational repo: {item['name']}")
-                continue
-
-            # Minimum star threshold — filter out very low quality repos
-            if item.get("stargazers_count", 0) < 5:
-                continue
-
-            # Language filtering — when English requested, skip repos with non-Latin content
+            # Language filter — must come first to avoid processing non-English repos
             if language == "en":
                 name_and_desc = f"{item['name']} {item.get('description', '')}"
-                # Count characters outside basic Latin + extended Latin range
-                non_latin = sum(
-                    1 for c in name_and_desc[:300]
-                    if ord(c) > 0x024F  # beyond Latin Extended-B
-                )
-                if non_latin > 3:  # even a few CJK/Arabic/Cyrillic chars = non-English
-                    logger.debug(f"Skipping {item['name']} - non-English content detected")
+                non_latin = sum(1 for c in name_and_desc[:300] if ord(c) > 0x024F)
+                if non_latin > 3:
                     continue
-            
+
+            # Minimum star threshold
+            if item.get("stargazers_count", 0) < 10:
+                continue
+
+            # Educational keyword must appear in the repo NAME (not just description)
+            # This prevents app repos that mention "learning" in their description
+            edu_in_name = any(k in name_lower for k in [
+                "tutorial", "course", "learn", "guide", "awesome",
+                "roadmap", "cheatsheet", "example", "notes", "resources"
+            ])
+
+            # If not in name, check description but require stronger signal
+            if not edu_in_name:
+                edu_in_desc = any(k in desc_lower for k in [
+                    "tutorial", "course", "guide", "awesome",
+                    "roadmap", "cheatsheet", "resources"
+                ])
+                # "learn" in description only counts if it's a standalone word
+                learn_standalone = bool(_re.search(r'\blearn\b', desc_lower))
+                if not edu_in_desc and not learn_standalone:
+                    continue
+
+                # Extra check: if only educational signal is in description,
+                # make sure it's not an app repo using the skill
+                app_signals = ["app", "system", "scanner", "detector", "tracker",
+                               "manager", "dashboard", "service", "platform", "tool"]
+                if any(k in name_lower for k in app_signals):
+                    continue
+
             course = SimplifiedCourse(
                 id=f"github_{item['id']}",
                 title=item["name"],
@@ -137,14 +121,12 @@ class GitHubProvider:
                 url=item["html_url"],
                 description=item.get("description", "No description available"),
                 tags=item.get("topics", []),
-                relevance_score=0.5,  # Will be adjusted by ranking engine
-                # Quality signals
+                relevance_score=0.5,
                 stars=item.get("stargazers_count", 0),
                 forks=item.get("forks_count", 0),
-                published_at=item.get("pushed_at"),  # last active date
-                # Authority signal
+                published_at=item.get("pushed_at"),
                 org_login=item.get("owner", {}).get("login"),
             )
             courses.append(course)
-        
+
         return courses

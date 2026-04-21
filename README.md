@@ -5,13 +5,21 @@ A FastAPI-based recommendation system that provides personalized learning conten
 ## Features
 
 - **Batch recommendations**: Get recommendations for multiple skills in a single request
-- **Async API calls** to multiple content providers (YouTube, GitHub)
-- **Intelligent ranking** based on relevance, popularity, and user preferences
-- **Language filtering**: Filter content by preferred language (ISO 639-1 codes)
-- **Enhanced preferences**: Support for career goals, learning styles, time commitments, and technologies
+- **Async API calls** to **YouTube** (videos and **playlists**), **GitHub**, and **Dev.to**
+- **Intelligent ranking** — relevance, engagement, authority, recency, plus guards for meta-content and preference mismatches
+- **Preference-aware YouTube search** — e.g. short vs long-form hints from the same `preferences` list you already send
+- **Language filtering**: Filter content by preferred language (ISO 639-1 codes) on batch requests
+- **Enhanced preferences**: Career goals, technologies, learning style, time commitment, and **audience** (e.g. beginner vs experienced) as free-text tags
+- **TF-IDF + MMR re-ranking** for diversity; soft per-provider limits so one source does not crowd out others when multiple providers return results
 - **Deduplication and filtering**
 - **RESTful API** with OpenAPI documentation
 - **Extensible architecture** for adding more providers
+
+## Documentation
+
+- **[Recommendation engine (technical)](docs/RECOMMENDATION_ENGINE.md)** — providers, ranking, YouTube playlists, and preference behavior
+- **[Architecture](ARCHITECTURE.md)** — system design and components
+- **[Migration guide](MIGRATION_GUIDE.md)** — v1 vs v2 API
 
 ## What's New in v2.0
 
@@ -217,18 +225,19 @@ fetch(url, {
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `skill` | String | Yes | The skill or topic to learn (min length: 1) |
-| `preferences` | Array[String] | No | Career goals, learning styles, time commitments, or technologies |
+| `preferences` | Array[String] | No | Career goals, technologies, learning style, time commitment, audience level (see below) |
 
-## Preference Types
+## Preference types
 
-The API supports various preference types:
+Preferences are **plain strings**. The ranker and providers interpret common phrases:
 
-- **Career Goals**: "Backend Developer", "Data Scientist", "ML Engineer", "Frontend Developer"
-- **Learning Styles**: "project-based", "theoretical", "hands-on", "interactive"
-- **Time Commitment**: "quick tutorials", "comprehensive courses", "short videos"
-- **Technologies**: "FastAPI", "Django", "React", "Docker", "Kubernetes"
+- **Career goals**: e.g. `"Backend Developer"`, `"Data Scientist"`, `"Frontend Developer"`
+- **Technologies**: e.g. `"FastAPI"`, `"React"`, `"Docker"` (also used to tighten search queries)
+- **Learning style**: e.g. `"project-based"`, `"hands-on"`, `"theoretical"`
+- **Time / format**: `"quick tutorials"`, `"short videos"`, `"crash course"` favor shorter YouTube results; `"comprehensive courses"`, `"full course"`, `"deep dive"` favor longer videos and playlists
+- **Audience** (informal): e.g. `"beginner"`, `"senior developer"`, `"working developer"` — used for difficulty and depth scoring (not separate API fields)
 
-All preference types are treated equally in the ranking algorithm.
+Strings are not all weighted identically: technologies and format cues affect search construction, relevance, and penalties (e.g. hands-on vs generic resource lists on GitHub).
 
 ## Language Support
 
@@ -244,24 +253,31 @@ The API supports content filtering by language using ISO 639-1 codes:
 - `ar` - Arabic
 - And many more...
 
-## Project Structure
+## Project structure
 
 ```
 .
-├── main.py                      # FastAPI application entry point
+├── main.py                       # FastAPI application entry point
 ├── api/
-│   ├── recommendations.py       # Single-skill endpoint (v1)
-│   └── batch_recommendations.py # Batch endpoint (v2)
+│   ├── recommendations.py      # Single-skill endpoint (v1) — YouTube, GitHub, Dev.to
+│   └── batch_recommendations.py  # Batch endpoint (v2)
 ├── models/
-│   ├── schemas.py              # Legacy data models
-│   └── batch_models.py         # New batch data models
+│   ├── schemas.py                # Legacy request/response models (v1)
+│   └── batch_models.py           # Batch models (v2)
 ├── providers/
-│   ├── youtube_provider.py     # YouTube Data API integration
-│   └── github_provider.py      # GitHub API integration
+│   ├── youtube_provider.py       # YouTube Data API (videos + playlists)
+│   ├── github_provider.py        # GitHub repository search
+│   └── devto_provider.py         # Dev.to / Forem articles
 ├── core/
-│   └── ranking.py              # Ranking algorithm
+│   ├── ranking.py                # Multi-signal ranking
+│   ├── content_similarity.py   # TF-IDF + MMR re-ranking
+│   ├── authority.py              # Trusted channel/org boosts
+│   └── skill_taxonomy.py         # Skill expansion for queries and matching
+├── docs/
+│   └── RECOMMENDATION_ENGINE.md  # Engine behavior (this release)
 ├── requirements.txt
-├── MIGRATION_GUIDE.md          # v1 to v2 migration guide
+├── ARCHITECTURE.md
+├── MIGRATION_GUIDE.md
 └── README.md
 ```
 

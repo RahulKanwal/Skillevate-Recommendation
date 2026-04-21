@@ -137,30 +137,23 @@ class DevToProvider:
             title = item.get("title", "")
             description = item.get("description", "")
             tags = [t.lower() for t in item.get("tag_list", [])]
-            content = f"{title} {description}".lower()
-
-            # Must mention skill in title, description, or tags
-            if skill_lower not in content and not any(skill_lower in t for t in tags):
-                continue
-
-            # Must have educational intent — title or description should contain
-            # tutorial/learning keywords, not just be a general opinion/news piece
-            edu_keywords = [
-                "tutorial", "guide", "learn", "course", "how to", "introduction",
-                "getting started", "deep dive", "explained", "walkthrough", "step by step",
-                "build", "implement", "create", "example", "practice", "tips", "tricks",
-                "best practices", "cheatsheet", "roadmap", "overview", "fundamentals",
-            ]
             title_lower = title.lower()
             desc_lower = description.lower()
-            has_edu_intent = any(k in title_lower or k in desc_lower for k in edu_keywords)
-            if not has_edu_intent:
-                logger.debug(f"Dev.to: skipping non-educational article: '{title}'")
+
+            # Skill must appear in the title for strong relevance signal
+            # (tag-only matches are too loose — "python" tag appears on everything)
+            if skill_lower not in title_lower:
                 continue
 
-            # Skill must appear in title (not just tags/description) for strong relevance
-            if skill_lower not in title_lower and not any(skill_lower in t for t in tags):
-                logger.debug(f"Dev.to: skill not in title/tags, skipping: '{title}'")
+            # Must have clear educational intent in the title
+            edu_title_keywords = [
+                "tutorial", "guide", "how to", "introduction", "getting started",
+                "deep dive", "explained", "walkthrough", "step by step", "build",
+                "implement", "create", "tips", "best practices", "cheatsheet",
+                "roadmap", "overview", "fundamentals", "learn", "course",
+            ]
+            if not any(k in title_lower for k in edu_title_keywords):
+                logger.debug(f"Dev.to: no educational signal in title, skipping: '{title}'")
                 continue
 
             reactions = item.get("public_reactions_count", 0) or 0

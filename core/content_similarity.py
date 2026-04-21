@@ -52,12 +52,22 @@ def rerank_with_tfidf(
     if len(courses) <= 1:
         return courses[:top_n]
 
-    # Per-provider caps — prevents any single provider dominating
-    # Distribute top_n roughly: YouTube ~40%, GitHub ~30%, Dev.to ~30%
+    # Per-provider caps: soft targets so one source (often Dev.to) cannot fill
+    # the entire list when YouTube/GitHub also returned candidates.
+    providers_present = {c.provider for c in courses}
+    has_yt = "YouTube" in providers_present
+    has_gh = "GitHub" in providers_present
+    has_dev = "Dev.to" in providers_present
+
+    if has_yt or has_gh:
+        dev_cap = max(1, min(round(top_n * 0.38), top_n))
+    else:
+        dev_cap = top_n
+
     provider_caps = {
-        "YouTube": max(2, round(top_n * 0.40)),
-        "GitHub":  max(1, round(top_n * 0.30)),
-        "Dev.to":  max(1, round(top_n * 0.30)),
+        "YouTube": max(2, round(top_n * 0.42)),
+        "GitHub": max(1, round(top_n * 0.32)),
+        "Dev.to": dev_cap if has_dev else top_n,
     }
 
     # Build corpus — title is doubled to give it more weight
@@ -89,6 +99,15 @@ def rerank_with_tfidf(
                 + _TFIDF_BLEND_WEIGHT * float(tfidf_scores[i])
             )
             course.relevance_score = round(min(blended, 1.0), 4)
+
+        # Drop anything that still scores too low after blending
+        filtered = [(i, c) for i, c in enumerate(courses) if c.relevance_score >= 0.18]
+        if not filtered:
+            return courses[:top_n]
+        indices, courses = zip(*filtered)
+        courses = list(courses)
+        course_vectors = course_vectors[list(indices)]
+        tfidf_scores = tfidf_scores[list(indices)]
 
         # MMR re-ranking for diversity with provider caps
         return _mmr(courses, course_vectors, tfidf_scores, top_n, provider_caps)

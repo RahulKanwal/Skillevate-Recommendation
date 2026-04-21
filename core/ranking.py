@@ -1,18 +1,14 @@
 """
 Ranking engine — scores and sorts courses using a multi-signal approach.
 
-Scoring breakdown (must sum to 1.0):
-  relevance_score  0.35  — keyword match (title + description + tags), spam-penalized
-  quality_score    0.35  — GitHub stars/forks (log-normalized); YouTube uses recency as proxy
-  authority_score  0.20  — official channel / trusted org boost (see core/authority.py)
-  recency_score    0.10  — exponential decay based on last updated / published date
+Composite score (before multiplicative penalties):
+  relevance  0.45  — keyword match (title + description + tags), spam- and coherence-penalized
+  quality    0.25  — provider-specific (views/likes, playlist size, stars/forks, reactions)
+  authority  0.20  — official channel / trusted org (see core/authority.py); capped when relevance is low
+  recency    0.10  — exponential decay by publish date
 
-Improvements over the previous version:
-  1. Quality signals  — GitHub stars + forks fed into score (were ignored before)
-  2. Spam penalty     — keyword density check caps abusive title/description stuffing
-  3. Recency decay    — older content scores lower on fast-moving topics
-  4. Coherence check  — title/description word overlap; incoherent content penalized
-  5. Authority boost  — official channels/orgs rank above random creators
+Additional multipliers: meta-content, difficulty mismatch, shallow-format vs depth preferences,
+GitHub awesome/roadmap vs hands-on preferences.
 """
 
 import math
@@ -33,6 +29,7 @@ _MAX_STARS = 200_000
 _MAX_FORKS = 50_000
 _MAX_VIEWS = 10_000_000
 _MAX_LIKES = 200_000
+_MAX_PLAYLIST_ITEMS = 120
 
 # Recency half-life in days (~1 year decay)
 _RECENCY_HALF_LIFE_DAYS = 365
@@ -57,7 +54,13 @@ class RankingEngine:
             course.relevance_score = self._calculate_score(course, skill, preferences)
 
         # Filter out results with very low relevance — catches completely off-topic content
-        courses = [c for c in courses if c.relevance_score >= 0.15]
+        # High-authority content (institutes, official channels) gets a lower threshold
+        def _passes_threshold(c) -> bool:
+            authority = self._authority_score(c, skill)
+            threshold = 0.15 if authority >= 0.8 else 0.20
+            return c.relevance_score >= threshold
+
+        courses = [c for c in courses if _passes_threshold(c)]
 
         # Difficulty filter (Course objects only)
         if difficulty and difficulty != DifficultyLevel.ALL:
@@ -78,10 +81,15 @@ class RankingEngine:
     ) -> float:
         relevance = self._relevance_score(course, skill, preferences)
         quality   = self._quality_score(course)
+        # Prevent viral off-topic content: popularity cannot rescue low topical match
+        if relevance < 0.25:
+            quality = min(quality, 0.32 + relevance * 2.15)
         authority = self._authority_score(course, skill)
         recency   = self._recency_score(course)
         difficulty_multiplier = self._difficulty_mismatch_penalty(course, preferences)
         meta_multiplier       = self._meta_content_penalty(course)
+        depth_multiplier      = self._depth_format_penalty(course, preferences)
+        github_list_multiplier = self._github_curated_list_penalty(course, preferences)
 
         score = (
             relevance * 0.45
@@ -89,7 +97,35 @@ class RankingEngine:
             + authority * 0.20
             + recency  * 0.10
         )
-        return round(min(score * difficulty_multiplier * meta_multiplier, 1.0), 4)
+        # Authority should boost relevant content, not rescue irrelevant content
+        # If relevance is very low, cap the authority contribution
+        if relevance < 0.2:
+            score = relevance * 0.45 + quality * 0.25 + min(authority, 0.3) * 0.20 + recency * 0.10
+        combined = (
+            score
+            * difficulty_multiplier
+            * meta_multiplier
+            * depth_multiplier
+            * github_list_multiplier
+        )
+        yt = getattr(course, "_yt_internal", None) or {}
+        if yt.get("kind") == "playlist" and preferences:
+            pj = " ".join(preferences).lower()
+            if any(
+                k in pj
+                for k in (
+                    "comprehensive",
+                    "full course",
+                    "complete course",
+                    "course series",
+                    "playlist",
+                    "deep dive",
+                    "in-depth",
+                    "in depth",
+                )
+            ):
+                combined = min(combined * 1.12 + 0.02, 1.0)
+        return round(min(combined, 1.0), 4)
 
     # ── 1. Relevance (keyword match + spam penalty + coherence) ───────────────
 
@@ -228,8 +264,33 @@ class RankingEngine:
         """
         Quality signals per provider:
           GitHub  — log-normalized stars + forks
-          YouTube — log-normalized view count + like count (falls back to 0.5 if stats unavailable)
+          YouTube — views/likes for videos; playlist size for playlists
+          Dev.to  — log-normalized reactions + comments
         """
+        yt_meta = getattr(course, "_yt_internal", None) or {}
+        if course.provider == "YouTube" and yt_meta.get("kind") == "playlist":
+            n = int(yt_meta.get("item_count") or 0)
+            item_score = math.log1p(n) / math.log1p(_MAX_PLAYLIST_ITEMS)
+            return min(0.28 + item_score * 0.72, 1.0)
+
+        # YouTube videos
+        view_count = getattr(course, "view_count", None)
+        like_count = getattr(course, "like_count", None)
+        if view_count is not None:
+            view_score = math.log1p(view_count) / math.log1p(_MAX_VIEWS)
+            like_score = math.log1p(like_count or 0) / math.log1p(_MAX_LIKES)
+            return min(view_score * 0.6 + like_score * 0.4, 1.0)
+
+        # Dev.to — stars field holds reactions, forks holds comments
+        if course.provider == "Dev.to":
+            reactions = course.stars or 0
+            comments  = course.forks or 0
+            _MAX_REACTIONS = 2_000
+            _MAX_COMMENTS  = 200
+            r_score = math.log1p(reactions) / math.log1p(_MAX_REACTIONS)
+            c_score = math.log1p(comments)  / math.log1p(_MAX_COMMENTS)
+            return min(r_score * 0.7 + c_score * 0.3, 1.0)
+
         # GitHub quality
         if hasattr(course, "stars") and course.stars is not None:
             stars = course.stars or 0
@@ -237,14 +298,6 @@ class RankingEngine:
             star_score = math.log1p(stars) / math.log1p(_MAX_STARS)
             fork_score = math.log1p(forks) / math.log1p(_MAX_FORKS)
             return min(star_score * 0.7 + fork_score * 0.3, 1.0)
-
-        # YouTube quality — use engagement stats when available
-        view_count = getattr(course, "view_count", None)
-        like_count = getattr(course, "like_count", None)
-        if view_count is not None:
-            view_score = math.log1p(view_count) / math.log1p(_MAX_VIEWS)
-            like_score = math.log1p(like_count or 0) / math.log1p(_MAX_LIKES)
-            return min(view_score * 0.6 + like_score * 0.4, 1.0)
 
         # Legacy Course object with rating
         if hasattr(course, "rating") and course.rating:
@@ -341,6 +394,10 @@ class RankingEngine:
             r"how i (learned|learn|studied|study)",
             r"my (learning|study) (journey|path|roadmap)",
             r"(roadmap|path) (for|to) (learn|become|master)",
+            r"(learn|master) .{0,20} (fast|quickly|in \d+|in one|overnight)",
+            r"you need to learn",
+            r"why you (should|need to|must) learn",
+            r"(stop|start) (learning|using|doing)",
         ]
 
         for pattern in strong_patterns:
@@ -353,6 +410,78 @@ class RankingEngine:
                 logger.debug(f"Moderate meta-content penalty: '{course.title}'")
                 return 0.5
 
+        return 1.0
+
+    def _depth_format_penalty(
+        self,
+        course: Union[Course, SimplifiedCourse],
+        preferences: List[str],
+    ) -> float:
+        """
+        When preferences ask for depth (intermediate/advanced/senior), downrank
+        ultra-short explainers ("in 5 minutes", "explained in 10 minutes").
+        """
+        if not preferences:
+            return 1.0
+        joined = " ".join(preferences).lower()
+        wants_depth = any(
+            w in joined
+            for w in (
+                "intermediate",
+                "advanced",
+                "senior",
+                "experienced",
+                "professional",
+                "working developer",
+                "in-depth",
+                "in depth",
+                "comprehensive",
+            )
+        )
+        if not wants_depth:
+            return 1.0
+        blob = f"{course.title} {(course.description or '')[:400]}".lower()
+        if re.search(
+            r"\bin \d+\s*(min|minute|mins)|explained in \d+|"
+            r"\d+\s*(min|minute|mins) (!|\.|\||#|$)|#shorts",
+            blob,
+        ):
+            return 0.35
+        return 1.0
+
+    def _github_curated_list_penalty(
+        self,
+        course: Union[Course, SimplifiedCourse],
+        preferences: List[str],
+    ) -> float:
+        """
+        When the user wants hands-on / project work, slightly deprioritize
+        generic awesome-lists and roadmaps (still useful, but not primary learning).
+        """
+        if course.provider != "GitHub":
+            return 1.0
+        if not preferences:
+            return 1.0
+        joined = " ".join(preferences).lower()
+        wants_hands_on = any(
+            w in joined
+            for w in (
+                "project",
+                "hands-on",
+                "hands on",
+                "build",
+                "practice",
+                "coding",
+            )
+        )
+        if not wants_hands_on:
+            return 1.0
+        name = course.title.lower()
+        if any(
+            k in name
+            for k in ("awesome", "roadmap", "resources", "learning-resources", "curated")
+        ):
+            return 0.68
         return 1.0
 
     def _difficulty_mismatch_penalty(
