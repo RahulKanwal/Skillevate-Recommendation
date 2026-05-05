@@ -33,18 +33,36 @@ See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for details on migrating from v1 to
 
 ## Setup
 
-1. Install dependencies:
+1. Clone the repository and navigate to the project directory:
+```bash
+git clone <repository-url>
+cd skillevate-recommendation-system
+```
+
+2. Create and activate a virtual environment:
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate on macOS/Linux
+source venv/bin/activate
+
+# Activate on Windows
+venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Configure API keys:
+4. Configure environment variables:
 ```bash
 cp .env.example .env
-# Edit .env and add your YouTube API key
+# Edit .env and add your API keys and MongoDB connection string
 ```
 
-3. Run the server:
+5. Run the server:
 ```bash
 uvicorn main:app --reload
 ```
