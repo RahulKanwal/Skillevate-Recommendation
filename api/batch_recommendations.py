@@ -102,13 +102,18 @@ async def process_single_skill(
     github = GitHubProvider()
     devto = DevToProvider()
     
-    # Fetch from providers in parallel
-    logger.info(f"Fetching recommendations for skill: {skill}")
-    
+    # Fetch a larger pool per provider so that after the multi-layer filtering
+    # (skill match, educational signal, relevance threshold, TF-IDF re-ranking)
+    # there are still enough candidates to fill max_results.
+    # The final output is capped at max_results by rerank_with_tfidf.
+    fetch_size = max(max_results * 3, 30)
+
+    logger.info(f"Fetching recommendations for skill: {skill} (fetch_size={fetch_size})")
+
     provider_results = await asyncio.gather(
-        youtube.fetch_courses(skill, max_results, language, preferences),
-        github.fetch_courses(skill, max_results, language, preferences),
-        devto.fetch_courses(skill, max_results, language, preferences),
+        youtube.fetch_courses(skill, fetch_size, language, preferences),
+        github.fetch_courses(skill, fetch_size, language, preferences),
+        devto.fetch_courses(skill, fetch_size, language, preferences),
         return_exceptions=True
     )
     

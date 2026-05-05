@@ -140,20 +140,30 @@ class DevToProvider:
             title_lower = title.lower()
             desc_lower = description.lower()
 
-            # Skill must appear in the title for strong relevance signal
-            # (tag-only matches are too loose — "python" tag appears on everything)
-            if skill_lower not in title_lower:
+            # Skill must appear in title, description, or tags.
+            # The old title-only check was too strict — many good articles
+            # phrase the skill in the description or use it as a tag without
+            # repeating it in the title (e.g. "Setting Up CocoIndex with Docker").
+            skill_in_content = (
+                skill_lower in title_lower
+                or skill_lower in desc_lower
+                or skill_lower in " ".join(tags)
+            )
+            if not skill_in_content:
                 continue
 
-            # Must have clear educational intent in the title
-            edu_title_keywords = [
+            # Must have clear educational intent — checked across title + description
+            # so articles like "Docker: From Zero to Production" aren't dropped just
+            # because the educational keyword is in the description rather than the title.
+            edu_keywords = [
                 "tutorial", "guide", "how to", "introduction", "getting started",
                 "deep dive", "explained", "walkthrough", "step by step", "build",
                 "implement", "create", "tips", "best practices", "cheatsheet",
                 "roadmap", "overview", "fundamentals", "learn", "course",
             ]
-            if not any(k in title_lower for k in edu_title_keywords):
-                logger.debug(f"Dev.to: no educational signal in title, skipping: '{title}'")
+            combined_text = f"{title_lower} {desc_lower}"
+            if not any(k in combined_text for k in edu_keywords):
+                logger.debug(f"Dev.to: no educational signal in title+desc, skipping: '{title}'")
                 continue
 
             reactions = item.get("public_reactions_count", 0) or 0
