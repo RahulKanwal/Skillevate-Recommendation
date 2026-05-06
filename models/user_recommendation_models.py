@@ -65,7 +65,7 @@ class UserRecommendationRequest(BaseModel):
 class UserRecommendationResponse(BaseModel):
     """Response body for POST /api/user-recommendations."""
 
-    analysis_id: str
+    analysis_id: Optional[str]
     user_id: str
     gaps: List[str]
     recommendations: List[Recommendation]

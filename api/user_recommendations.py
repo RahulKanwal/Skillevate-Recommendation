@@ -138,13 +138,12 @@ async def get_user_recommendations(
 
     Flow:
     1. Fetch the active analysis document from MongoDB.
-    2. If not found → HTTP 404.
+    2. If not found → return empty recommendations.
     3. If ``results.recommendations`` is non-empty → cache hit, return immediately.
     4. If ``results.gaps`` is empty → return empty recommendations (no batch call).
     5. Otherwise → call batch engine, map results, write back, return.
 
     Raises:
-        HTTPException(404): No active analysis found for the given ``user_id``.
         HTTPException(502): Batch engine raised an unhandled exception.
         HTTPException(500): Any other unhandled exception.
     """
@@ -154,11 +153,14 @@ async def get_user_recommendations(
         # Step 1: Fetch active analysis
         doc = await _fetch_active_analysis(db, request.user_id, request.analysis_id)
 
-        # Step 2: Not found → 404
+        # Step 2: Not found → return empty response
         if doc is None:
-            raise HTTPException(
-                status_code=404,
-                detail="No active analysis found for this user",
+            return UserRecommendationResponse(
+                analysis_id=None,
+                user_id=request.user_id,
+                gaps=[],
+                recommendations=[],
+                cached=False,
             )
 
         analysis_id = str(doc["_id"])
