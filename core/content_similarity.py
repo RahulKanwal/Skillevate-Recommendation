@@ -101,9 +101,12 @@ def rerank_with_tfidf(
             course.relevance_score = round(min(blended, 1.0), 4)
 
         # Drop anything that still scores too low after blending
-        filtered = [(i, c) for i, c in enumerate(courses) if c.relevance_score >= 0.18]
+        # Use a lower threshold to ensure we keep at least some results for niche skills
+        filtered = [(i, c) for i, c in enumerate(courses) if c.relevance_score >= 0.10]
         if not filtered:
-            return courses[:top_n]
+            # If nothing passes even the low threshold, return the single best course
+            best_idx = max(range(len(courses)), key=lambda i: courses[i].relevance_score)
+            return [courses[best_idx]]
         indices, courses = zip(*filtered)
         courses = list(courses)
         course_vectors = course_vectors[list(indices)]
